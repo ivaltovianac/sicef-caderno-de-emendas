@@ -1,12 +1,9 @@
 <?php
-require_once __DIR__ . '/../config/db.php';
-
 class User {
     private $pdo;
 
-    public function __construct(){
-        global $pdo;
-        $this->$pdo = $pdo;
+    public function __construct(PDO $pdo){
+        $this->pdo = $pdo;
     }
 
     public function findByEmail($email) {

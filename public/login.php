@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once __DIR__ . '/../config/db.php'; // Adiciona a conexão com o banco
 require_once __DIR__ . '/../models/User.php';
 
 $error = '';
@@ -9,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = filter_var($_POST['email'] ?? '', FILTER_SANITIZE_EMAIL);
     $password = $_POST['password'] ?? '';
 
-    $userModel = new User();
+    $userModel = new User($pdo); // passa o PDO corretamente
     $user = $userModel->findByEmail($email);
 
     if ($user && password_verify($password, $user['senha'])) {
@@ -19,8 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $error = 'Credenciais inválidas. Tente novamente.';
     }
-} 
+}
 ?>
+
 
 <!-- estrutura do HTML para o login -->
 <!DOCTYPE html>
