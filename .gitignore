@@ -1,0 +1,10 @@
+# Arquivos e pastas comuns que não devem ser versionados
+
+# Configurações locais
+config/db.php
+
+# IDEs e editores
+.vscode/
+
+# Arquivos ocultos
+.htaccess
