@@ -1,4 +1,5 @@
 <?php
+// sicef-caderno-de-emendas/config/db.php
 // Configurações de conexão com o banco de dados PostgreSQL
 $host = 'localhost';
 $db   = 'caderno_emendas';
