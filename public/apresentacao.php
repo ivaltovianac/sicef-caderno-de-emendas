@@ -174,6 +174,52 @@ session_start();
       font-size: 1.1rem;
       opacity: 0.9;
     }
+
+    /* .download-overlay {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+} */
+
+  .download-overlay {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  z-index: 2;
+  opacity: 1 !important; /* força sempre visível */
+  transition: none;
+}
+
+.splide__slide:hover .download-overlay {
+  opacity: 1;
+}
+
+
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--accent-color);
+  color: var(--dark-color);
+  padding: 12px 24px;
+  border-radius: 30px;
+  text-decoration: none;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  transition: all 0.3s ease;
+}
+
+/* .download-btn:hover {
+  background-color: #FFD54F;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+} */
+
+.download-btn .material-icons {
+  margin-right: 8px;
+  font-size: 1.2rem;
+}
     
     /* Hero Section */
     .hero {
@@ -200,7 +246,7 @@ session_start();
     }
     /* Estilo para os slides do carrossel */
     .splide__slide {
-    background-size: contain; /* Ajusta o tamanho do fundo */
+    background-size: contain;  /* Ajusta o tamanho do fundo */
     background-repeat: no-repeat;
     background-position: center;
     height: 400px;
@@ -209,29 +255,60 @@ session_start();
     justify-content: center;
     }
     /* Estilo para o primeiro slide */
-    .splide__slide:nth-child(1) {
+    /* .splide__slide:nth-child(1) {
       background-image: url('imagens/caderno_emendas_2025.png');
-    }
+    } */
     /* Estilo para o segundo slide */
-    .splide__slide:nth-child(2) {
+    /* .splide__slide:nth-child(2) {
       background-image: url('imagens/caderno_emendas_2024.png');
-    }
+    } */
     /* Estilo para o terceiro slide */
-    .splide__slide:nth-child(3) {
+    /* .splide__slide:nth-child(3) {
       background-image: url('imagens/caderno_emendas_2023.png');
-    }
+    } */
     /* Estilo para o quarto slide */
-    .splide__slide:nth-child(4) {
+    /* .splide__slide:nth-child(4) {
       background-image: url('imagens/caderno_emendas_2022.png');
-    }
+    } */
     /* Estilo para o quinto slide */
-    .splide__slide:nth-child(5) {
+    /* .splide__slide:nth-child(5) {
       background-image: url('imagens/caderno_emendas_2021.png');
-    }
+    } */
     /* Estilo para o sexto slide */
-    .splide__slide:nth-child(6) {
+    /* .splide__slide:nth-child(6) {
       background-image: url('imagens/caderno_emendas_2020.png');
+    } */
+
+    .slide-content {
+      position: relative;
+      height: 100%;
+      width: 100%;
     }
+    .slide-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 1;
+  }
+
+/* .download-overlay {
+  position: relative;
+  bottom: 40px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+} */
+
+
+
 
     /* Estilo para o conteúdo da seção hero */
     .hero-content {
@@ -275,16 +352,18 @@ session_start();
   /* Estilo para dispositivos móveis */
 
   /* Ajustes para telas menores */
-  @media (max-width: 768px) {
-    /* Estilo para titulos da seção hero */
-    .hero h2 {
-      font-size: 2rem; /* Tamanho da fonte para o título */
-    }
-    /* Estilo para o parágrafo */
-    .hero p {
-      font-size: 1rem; /* Tamanho da fonte para o parágrafo */
-    }
+/* Ajuste para mobile */
+@media (max-width: 768px) {
+  .download-overlay {
+    opacity: 1; /* Mostra sempre em mobile */
+    bottom: 20px;
   }
+  
+  .download-btn {
+    padding: 10px 18px;
+    font-size: 0.9rem;
+  }
+}
     
     /* Main Content */
     main {
@@ -468,7 +547,7 @@ session_start();
         <!-- Texto descritivo do cabeçalho -->
         <div class="header-description">
           <!-- Título do cabeçalho -->
-          <h2>Sistema de Gestão de Emendas Parlamentares</h2>
+          <h2>Sistema de Gestão de Emendas Federais</h2>
           <p>Centralize, organize e gerencie as propostas de emendas parlamentares de forma eficiente e transparente</p>
         </div>
       </div>
@@ -484,10 +563,10 @@ session_start();
         <!-- Slide 1 - 2025 -->
         <li class="splide__slide">
           <div class="slide-content">
-            <!-- <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2025.png')"></div> -->
+            <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2025.png')"></div>
             <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">Download</span>
+              <a href="https://www.economia.df.gov.br/documents/caderno_2025.pdf" class="download-btn" download>
+                <span class="material-icons">download</span>
                 Baixar Caderno 2025
               </a>
             </div>
@@ -497,10 +576,10 @@ session_start();
         <!-- Slide 2 - 2024 -->
         <li class="splide__slide">
           <div class="slide-content">
-            <!-- <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2024.png')"></div> -->
+            <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2024.png')"></div>
             <div class="download-overlay">
               <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="materia_l-icons">Download</span>
+                <span class="material-icons">download</span>
                 Baixar Caderno 2024
               </a>
             </div>
@@ -510,10 +589,10 @@ session_start();
         <!-- Slide 3 - 2023 -->
         <li class="splide__slide">
           <div class="slide-content">
-            <!-- <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2023.png')"></div> -->
+            <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2023.png')"></div>
             <div class="download-overlay">
               <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">Download</span>
+                <span class="material-icons">download</span>
                 Baixar Caderno 2023
               </a>
             </div>
@@ -522,10 +601,10 @@ session_start();
         <!-- Slide 4 - 2022 -->
         <li class="splide__slide">
           <div class="slide-content">
-            <!-- <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2022.png')"></div> -->
+            <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2022.png')"></div>
             <div class="download-overlay">
               <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">Download</span>
+                <span class="material-icons">download</span>
                 Baixar Caderno 2022
               </a>
             </div>
@@ -534,10 +613,10 @@ session_start();
         <!-- Slide 5 - 2021 -->
         <li class="splide__slide">
           <div class="slide-content">
-            <!-- <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2021.png')"></div> -->
+            <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2021.png')"></div>
             <div class="download-overlay">
               <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">Download</span>
+                <span class="material-icons">download</span>
                 Baixar Caderno 2021
               </a>
             </div>
@@ -546,10 +625,10 @@ session_start();
         <!-- Slide 3 - 2020 -->
         <li class="splide__slide">
           <div class="slide-content">
-            <!-- <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2020.png')"></div> -->
+            <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2020.png')"></div>
             <div class="download-overlay">
               <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">Download</span>
+                <span class="material-icons">download</span>
                 Baixar Caderno 2020
               </a>
             </div>
@@ -707,7 +786,7 @@ session_start();
 
 <!-- Importa o Splide.js -->
 <script src="https://cdn.jsdelivr.net/npm/@splidejs/splide@4.1.4/dist/js/splide.min.js"></script>
-// Inicializa o carrossel
+<!-- Inicializa o carrossel -->
 <script>
   // Aguarda o carregamento do DOM
   document.addEventListener('DOMContentLoaded', function() {
