@@ -101,6 +101,7 @@ session_start();
       display: flex;
       list-style: none;
       align-items: center; /* Alinha os itens verticalmente */
+      justify-content: center; /* Centraliza os itens horizontalmente */
     }
 
     /* Estilo para os itens de navegação */
@@ -509,6 +510,7 @@ session_start();
         <!-- Menu de navegação -->
         <ul>
           <!-- Item de navegação -->
+          <li><a href="#downloads"><span class="material-icons">download</span> Download dos Cadernos</a></li>
           <li><a href="#apresentacao"><span class="material-icons">info</span> Apresentação</a></li>
           <li><a href="#objetivos"><span class="material-icons">flag</span> Objetivos</a></li>
           <li><a href="#oque-e"><span class="material-icons">book</span> O que é o Caderno de Emendas</a></li>
@@ -582,7 +584,7 @@ session_start();
 </section>
 
 <!-- Seção de Downloads -->
-<section class="download-section">
+<section id="downloads" class="download-section">
   <div class="container">
     <h2>Downloads dos Cadernos de Emendas</h2>
     <div class="download-buttons">

@@ -9,15 +9,10 @@ if (isset($_SESSION['user'])) {
     exit;
 }
 
-// 1. Inclua primeiro o arquivo de configuração do banco
 require_once __DIR__ . '/../config/db.php';
-
-// 2. Depois inclua o User.php
 require_once __DIR__ . '/../models/User.php';
 
-// 3. Crie a instância do User com a conexão PDO
 $userModel = new User($pdo);
-
 $error = '';
 $success = '';
 
@@ -36,7 +31,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             if ($userModel->updatePassword($email, $password)) {
-                $success = 'Senha redefinida com sucesso!';
+                $_SESSION['success'] = 'Senha redefinida com sucesso!';
+                header('Location: login.php');
+                exit;
             } else {
                 $error = 'Erro ao redefinir senha. Verifique o e-mail informado.';
             }
@@ -44,94 +41,325 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Erro no banco de dados: ' . $e->getMessage();
         }
     }
-    // Se não houver erro, atualiza a senha
-    if ($userModel->updatePassword($email, $password)) {
-    $_SESSION['success'] = 'Senha redefinida com sucesso!';
-    header('Location: login.php'); // Redireciona para login
-    exit;
-}
 }
 ?>
-
 
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Caderno de Emendas Federais 2025</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redefinir Senha - Caderno de Emendas Federais 2025</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
-        /* Estilo mantido conforme o arquivo original */
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background-color: #fff; }
-        header { background: linear-gradient(90deg, #007b5e, #4db6ac); padding: 30px 50px; color: white; display: flex; justify-content: space-between; align-items: center; }
-        header img { height: 50px; }
-        nav { display: flex; gap: 20px; align-items: center; }
-        nav a { color: white; text-decoration: none; font-weight: 500; }
-        .hero { background: linear-gradient(90deg, #007b5e, #4db6ac); color: #ffc107; text-align: center; padding: 60px 20px; }
-        .hero h1 { margin: 0; font-size: 40px; font-weight: bold; }
-        .hero h2 { margin: 10px 0 0; font-size: 28px; color: #ffc107; }
-        .login-section { padding: 40px 20px; max-width: 500px; margin: auto; }
-        .login-section h3 { font-size: 24px; margin-bottom: 10px; color: #003366; }
-        .login-section a { color: #007bff; text-decoration: none; }
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #007bff; }
-        .form-group input[type="text"], .form-group input[type="email"], .form-group input[type="password"] { width: 100%; padding: 10px; border: 2px solid #007bff; border-radius: 10px; font-size: 16px; }
-        .btn { background-color: #003366; color: white; border: none; padding: 15px; width: 100%; font-size: 18px; border-radius: 10px; cursor: pointer; }
-        footer { background: linear-gradient(90deg, #007b5e, #4db6ac); color: white; text-align: center; padding: 40px 20px; margin-top: 50px; }
-        footer img { height: 30px; vertical-align: middle; }
-        footer a { color: white; text-decoration: none; }
-        .footer-info { margin-top: 20px; font-size: 14px; }
-        .error { color: red; margin-bottom: 15px; text-align: center; }
-        .success { color: green; margin-bottom: 15px; text-align: center; }
+        :root {
+            --primary-color: #007b5e;
+            --secondary-color: #4db6ac;
+            --accent-color: #ffc107;
+            --dark-color: #003366;
+            --light-color: #f8f9fa;
+            --error-color: #dc3545;
+            --success-color: #28a745;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--light-color);
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        header {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            padding: 1rem 2rem;
+            color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo img {
+            height: 50px;
+            transition: transform 0.3s;
+        }
+        
+        .logo img:hover {
+            transform: scale(1.05);
+        }
+        
+        nav {
+            display: flex;
+            gap: 1.5rem;
+        }
+        
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: opacity 0.3s;
+        }
+        
+        nav a:hover {
+            opacity: 0.9;
+        }
+        
+        .reset-container {
+            display: flex;
+            min-height: calc(100vh - 180px);
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .reset-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+            padding: 2.5rem;
+            margin: 2rem 0;
+        }
+        
+        .reset-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .reset-header h2 {
+            color: var(--dark-color);
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .reset-header p {
+            color: #666;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--dark-color);
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        
+        .form-control:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.2);
+            outline: none;
+        }
+        
+        .password-container {
+            position: relative;
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #777;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            background: var(--dark-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .btn:hover {
+            background: #002244;
+            transform: translateY(-2px);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .reset-footer {
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+        
+        .reset-footer a {
+            color: var(--secondary-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        .reset-footer a:hover {
+            color: var(--primary-color);
+            text-decoration: underline;
+        }
+        
+        .error {
+            color: var(--error-color);
+            background-color: rgba(220, 53, 69, 0.1);
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .success {
+            color: var(--success-color);
+            background-color: rgba(40, 167, 69, 0.1);
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        footer {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+        
+        .footer-logo img {
+            height: 40px;
+            margin-bottom: 1rem;
+        }
+        
+        .footer-info {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        
+        .footer-info p {
+            margin-bottom: 0.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                padding: 1rem;
+                gap: 1rem;
+            }
+            
+            nav {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .reset-card {
+                padding: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
     <header>
-        <div>
-            <img src="logo.png" alt="Logo SISEF"> SISEF
+        <div class="logo">
+            <a href="apresentacao.php" title="Ir para página inicial">
+                <img src="imagens/logo.png" alt="Logo SICEF">
+            </a>
         </div>
         <nav>
-            <a href="apresentacao.php">Início</a>
-            <a href="mailto:gab.sucap@economia.gov.df.br">Contato</a>
+            <a href="apresentacao.php"><span class="material-icons">info</span> Sobre</a>
+            <a href="mailto:gab.sucap@economia.gov.df.br"><span class="material-icons">email</span> Contato</a>
+            <a href="login.php"><span class="material-icons">arrow_back</span> Voltar ao Login</a>
         </nav>
     </header>
 
-    <div class="hero">
-        <h1>CADERNO DE EMENDAS FEDERAIS</h1>
-        <h2>2025</h2>
-    </div>
-
-    <div class="login-section">
-        <?php if($error): ?>
-            <div class="error"><?= $error ?></div>
-        <?php endif; ?>
-        
-        <?php if($success): ?>
-            <div class="success"><?= $success ?></div>
-        <?php endif; ?>
-        
-        <form method="POST" action="reset-password.php">
-            <div class="form-group">
-                <label for="email">E-mail</label>
-                <input type="email" id="email" name="email" placeholder="Seu e-mail cadastrado" required>
+    <div class="reset-container">
+        <div class="reset-card">
+            <div class="reset-header">
+                <h2>Redefinir Senha</h2>
+                <p>Informe seu e-mail e a nova senha</p>
             </div>
+
+            <?php if($error): ?>
+                <div class="error">
+                    <span class="material-icons" style="vertical-align: middle;">error</span>
+                    <?= htmlspecialchars($error) ?>
+                </div>
+            <?php endif; ?>
             
-            <div class="form-group">
-                <label for="password">Nova Senha</label>
-                <input type="password" id="password" name="password" placeholder="Nova Senha" required>
-            </div>
+            <?php if(isset($_SESSION['success'])): ?>
+                <div class="success">
+                    <span class="material-icons" style="vertical-align: middle;">check_circle</span>
+                    <?= htmlspecialchars($_SESSION['success']) ?>
+                </div>
+                <?php unset($_SESSION['success']); ?>
+            <?php endif; ?>
 
-            <div class="form-group">
-                <label for="confirm_password">Confirmar Nova Senha</label>
-                <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirme a Nova Senha" required>
-            </div>
+            <form method="POST" action="reset-password.php">
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" name="email" class="form-control" placeholder="Seu e-mail cadastrado" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Nova Senha</label>
+                    <div class="password-container">
+                        <input type="password" id="password" name="password" class="form-control" placeholder="Nova Senha" required minlength="8">
+                        <span class="toggle-password material-icons" onclick="togglePassword('password')">visibility</span>
+                    </div>
+                </div>
 
-            <button type="submit" class="btn">Redefinir Senha</button>
-        </form>
+                <div class="form-group">
+                    <label for="confirm_password">Confirmar Nova Senha</label>
+                    <div class="password-container">
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder="Confirme a Nova Senha" required minlength="8">
+                        <span class="toggle-password material-icons" onclick="togglePassword('confirm_password')">visibility</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn">
+                    <span class="material-icons">lock_reset</span>
+                    Redefinir Senha
+                </button>
+            </form>
+        </div>
     </div>
 
     <footer>
-        <img src="logo.png" alt="Logo SICEF">
-        <h3>SICEF</h3>
+        <div class="footer-logo">
+            <img src="imagens/logo-branco.png" alt="Logo SICEF">
+        </div>
+        <h3>SICEF - Caderno de Emendas Federais</h3>
         <p>GDF - Governo do Distrito Federal</p>
         <div class="footer-info">
             <p>Anexo do Palácio do Buriti 5º andar, Brasília/DF - CEP: 70075-900</p>
@@ -139,5 +367,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p>&copy; 2025. SEEC/SEFIN/SUCAP/COSP.</p>
         </div>
     </footer>
+
+    <script>
+        function togglePassword(fieldId) {
+            const passwordInput = document.getElementById(fieldId);
+            const toggleIcon = passwordInput.nextElementSibling;
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.textContent = 'visibility_off';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.textContent = 'visibility';
+            }
+        }
+    </script>
 </body>
 </html>
