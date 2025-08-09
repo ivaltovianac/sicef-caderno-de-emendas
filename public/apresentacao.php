@@ -28,6 +28,24 @@ session_start();
       padding: 0;
       box-sizing: border-box;
     }
+
+    /* Scroll suave */
+    html {
+      scroll-behavior: smooth;
+    }
+
+    /* Transição suave para elementos ancorados */
+    section {
+      scroll-margin-top: 100px; /* Ajuste conforme a altura do seu header */
+      transition: scroll-margin-top 0.3s ease;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+    }
+
     /* Estilo para o corpo */
     body {
       font-family: 'Poppins', sans-serif;
@@ -174,52 +192,6 @@ session_start();
       font-size: 1.1rem;
       opacity: 0.9;
     }
-
-    /* .download-overlay {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-} */
-
-  .download-overlay {
-  position: absolute;
-  bottom: 40px;
-  left: 0;
-  width: 100%;
-  text-align: center;
-  z-index: 2;
-  opacity: 1 !important; /* força sempre visível */
-  transition: none;
-}
-
-.splide__slide:hover .download-overlay {
-  opacity: 1;
-}
-
-
-.download-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--accent-color);
-  color: var(--dark-color);
-  padding: 12px 24px;
-  border-radius: 30px;
-  text-decoration: none;
-  font-weight: 600;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  transition: all 0.3s ease;
-}
-
-/* .download-btn:hover {
-  background-color: #FFD54F;
-  transform: translateY(-3px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
-} */
-
-.download-btn .material-icons {
-  margin-right: 8px;
-  font-size: 1.2rem;
-}
     
     /* Hero Section */
     .hero {
@@ -254,31 +226,7 @@ session_start();
     align-items: center;
     justify-content: center;
     }
-    /* Estilo para o primeiro slide */
-    /* .splide__slide:nth-child(1) {
-      background-image: url('imagens/caderno_emendas_2025.png');
-    } */
-    /* Estilo para o segundo slide */
-    /* .splide__slide:nth-child(2) {
-      background-image: url('imagens/caderno_emendas_2024.png');
-    } */
-    /* Estilo para o terceiro slide */
-    /* .splide__slide:nth-child(3) {
-      background-image: url('imagens/caderno_emendas_2023.png');
-    } */
-    /* Estilo para o quarto slide */
-    /* .splide__slide:nth-child(4) {
-      background-image: url('imagens/caderno_emendas_2022.png');
-    } */
-    /* Estilo para o quinto slide */
-    /* .splide__slide:nth-child(5) {
-      background-image: url('imagens/caderno_emendas_2021.png');
-    } */
-    /* Estilo para o sexto slide */
-    /* .splide__slide:nth-child(6) {
-      background-image: url('imagens/caderno_emendas_2020.png');
-    } */
-
+    
     .slide-content {
       position: relative;
       height: 100%;
@@ -294,21 +242,7 @@ session_start();
     background-repeat: no-repeat;
     background-position: center;
     z-index: 1;
-  }
-
-/* .download-overlay {
-  position: relative;
-  bottom: 40px;
-  left: 0;
-  width: 100%;
-  text-align: center;
-  z-index: 2;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-} */
-
-
-
+    }
 
     /* Estilo para o conteúdo da seção hero */
     .hero-content {
@@ -336,6 +270,67 @@ session_start();
       animation: fadeInUp 1.2s ease; /* Animação de entrada */
     }
 
+    /* Seção de Downloads */
+    .download-section {
+      background-color: white;
+      padding: 60px 0;
+      text-align: center;
+    }
+
+    .download-section h2 {
+      color: var(--primary-color);
+      margin-bottom: 30px;
+      font-size: 2rem;
+    }
+
+    .download-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--accent-color);
+      color: var(--dark-color);
+      padding: 12px 24px;
+      border-radius: 30px;
+      text-decoration: none;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+      min-width: 150px;
+    }
+
+    .download-btn:hover {
+      background-color: #FFD54F;
+      transform: translateY(-3px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    }
+
+    .download-btn .material-icons {
+      margin-right: 8px;
+      font-size: 1.2rem;
+    }
+
+    /* Responsivo */
+    @media (max-width: 768px) {
+      .download-buttons {
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .download-btn {
+        width: 100%;
+        max-width: 300px;
+      }
+    }
+
   /* Animação para o conteúdo */
   /* Efeito de desvanecimento e movimento para cima */
   @keyframes fadeInUp {
@@ -354,14 +349,36 @@ session_start();
   /* Ajustes para telas menores */
 /* Ajuste para mobile */
 @media (max-width: 768px) {
-  .download-overlay {
-    opacity: 1; /* Mostra sempre em mobile */
-    bottom: 20px;
+  .hero {
+    height: 300px; /* Altura do carrossel da seção hero */
+  }
+  /* Ajusta o tamanho do texto do título da seção hero */
+  .hero h2 {
+    font-size: 2rem;
+  }
+  /* Ajusta o tamanho do texto da descrição da seção hero */
+  .hero p {
+    font-size: 1rem;
   }
   
-  .download-btn {
-    padding: 10px 18px;
-    font-size: 0.9rem;
+  /* Estilo para o cabeçalho */
+  .header-content {
+    flex-direction: column; /* Alinhamento vertical do cabeçalho */
+    text-align: center; /* Alinhamento do texto no cabeçalho ao centro */
+  }
+  /* Estilo para o logotipo do cabeçalho */
+  .logo {
+    margin-bottom: 20px;
+    justify-content: center;
+  }
+  /* Estilo para a navegação */
+  nav ul {
+    flex-direction: column;
+    align-items: center;
+  }
+  /* Estilo para os itens de navegação */
+  nav ul li {
+    margin: 5px 0; /* Margem vertical dos itens de navegação */
   }
 }
     
@@ -471,45 +488,6 @@ session_start();
       font-size: 0.9rem;
       opacity: 0.8; /* Opacidade do copyright */
     }
-    
-    /* Responsive */
-    /* Estilo para dispositivos móveis */
-    @media (max-width: 768px) {
-      /* Estilo para o cabeçalho */
-      .header-content {
-        flex-direction: column; /* Alinhamento vertical do cabeçalho */
-        text-align: center; /* Alinhamento do texto no cabeçalho ao centro */
-      }
-      /* Estilo para o logotipo do cabeçalho */
-      .logo {
-        margin-bottom: 20px;
-        justify-content: center;
-      }
-      /* Estilo para a navegação */
-      nav ul {
-        flex-direction: column;
-        align-items: center;
-      }
-      /* Estilo para os itens de navegação */
-      nav ul li {
-        margin: 5px 0; /* Margem vertical dos itens de navegação */
-      }
-
-      /* Estilo para o carrossel da seção hero */
-      
-      /* Ajusta a altura do carrossel para dispositivos móveis */
-      .hero {
-        height: 300px; /* Altura do carrossel da seção hero */
-      }
-      /* Ajusta o tamanho do texto do título da seção hero */
-      .hero h2 {
-        font-size: 2rem;
-      }
-      /* Ajusta o tamanho do texto da descrição da seção hero */
-      .hero p {
-        font-size: 1rem;
-      }
-    }
   </style>
 </head>
 <body>
@@ -564,12 +542,6 @@ session_start();
         <li class="splide__slide">
           <div class="slide-content">
             <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2025.png')"></div>
-            <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/caderno_2025.pdf" class="download-btn" download>
-                <span class="material-icons">download</span>
-                Baixar Caderno 2025
-              </a>
-            </div>
           </div>
         </li>
         
@@ -577,12 +549,6 @@ session_start();
         <li class="splide__slide">
           <div class="slide-content">
             <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2024.png')"></div>
-            <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">download</span>
-                Baixar Caderno 2024
-              </a>
-            </div>
           </div>
         </li>
         
@@ -590,51 +556,60 @@ session_start();
         <li class="splide__slide">
           <div class="slide-content">
             <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2023.png')"></div>
-            <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">download</span>
-                Baixar Caderno 2023
-              </a>
-            </div>
           </div>
         </li>
         <!-- Slide 4 - 2022 -->
         <li class="splide__slide">
           <div class="slide-content">
             <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2022.png')"></div>
-            <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">download</span>
-                Baixar Caderno 2022
-              </a>
-            </div>
           </div>
         </li>
         <!-- Slide 5 - 2021 -->
         <li class="splide__slide">
           <div class="slide-content">
             <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2021.png')"></div>
-            <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">download</span>
-                Baixar Caderno 2021
-              </a>
-            </div>
           </div>
         </li>
-        <!-- Slide 3 - 2020 -->
+        <!-- Slide 6 - 2020 -->
         <li class="splide__slide">
           <div class="slide-content">
             <div class="slide-image" style="background-image: url('imagens/caderno_emendas_2020.png')"></div>
-            <div class="download-overlay">
-              <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" class="download-btn" download>
-                <span class="material-icons">download</span>
-                Baixar Caderno 2020
-              </a>
-            </div>
           </div>
         </li>
       </ul>
+    </div>
+  </div>
+</section>
+
+<!-- Seção de Downloads -->
+<section class="download-section">
+  <div class="container">
+    <h2>Downloads dos Cadernos de Emendas</h2>
+    <div class="download-buttons">
+      <a href="https://www.economia.df.gov.br/documents/d/seec/index-pdf-5" target="_blank" class="download-btn" download>
+        <span class="material-icons">download</span>
+        Caderno 2025
+      </a>
+      <a href="https://www.economia.df.gov.br/documents/d/seec/controlador-php_-1-pdf-7" target="_blank" class="download-btn" download>
+        <span class="material-icons">download</span>
+        Caderno 2024
+      </a>
+      <a href="https://www.economia.df.gov.br/documents/d/seec/emendas-federais-2023-pdf" target="_blank" class="download-btn" download>
+        <span class="material-icons">download</span>
+        Caderno 2023
+      </a>
+      <a href="https://www.economia.df.gov.br/documents/d/seec/caderno-de-emendas-federais-2022-com-capa-pdf" target="_blank" class="download-btn" download>
+        <span class="material-icons">download</span>
+        Caderno 2022
+      </a>
+      <a href="https://www.economia.df.gov.br/documents/d/seec/caderno-de-emendas-federais-2021-8-pdf" target="_blank" class="download-btn" download>
+        <span class="material-icons">download</span>
+        Caderno 2021
+      </a>
+      <a href="https://www.economia.df.gov.br/documents/d/seec/caderno-de-emendas-federal-2020-pdf" target="_blank"class="download-btn" download>
+        <span class="material-icons">download</span>
+        Caderno 2020
+      </a>
     </div>
   </div>
 </section>
@@ -800,6 +775,30 @@ session_start();
       arrows: false, // Remove as setas de navegação
       pagination: false // Remove os pontos de navegação
     }).mount(); // Monta o carrossel
+
+        // Adiciona offset para o scroll suave (considerando o header fixo)
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        const targetId = this.getAttribute('href');
+        if (targetId === '#') return;
+        
+        const targetElement = document.querySelector(targetId);
+        if (targetElement) {
+          const headerHeight = document.querySelector('header').offsetHeight;
+          const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - headerHeight;
+          
+          window.scrollTo({
+            top: targetPosition,
+            behavior: 'smooth'
+          });
+          
+          // Atualiza a URL sem recarregar a página
+          history.pushState(null, null, targetId);
+        }
+      });
+    });
   });
 </script>
 </html>
