@@ -498,7 +498,7 @@ session_start();
       <!-- Logotipo cabeçalho -->
       <div class="logo">
         <a href="apresentacao.php">
-          <img src="imagens/logo.png" alt="Logo SICEF">
+          <img src="imagens/logo.svg" alt="Logo SICEF">
         </a>
         <div class="logo-text">
           <!-- <h1>SICEF</h1> -->
@@ -743,7 +743,7 @@ session_start();
     <div class="container">
       <!-- Logo -->
       <div class="footer-logo">
-        <img src="imagens/logo.png" alt="Logo SICEF">
+        <img src="imagens/logo.svg" alt="Logo SICEF">
       </div>
       <!-- Informações de contato -->
       <div class="footer-info">

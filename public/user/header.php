@@ -11,7 +11,7 @@
 <body>
     <header class="main-header">
         <div class="container">
-            <h1>Sistema CICEF</h1>
+            <h1>Sistema SICEF</h1>
             <nav class="main-nav">
                 <ul>
                     <li><a href="/sicef-caderno-de-emendas/public/user/minhas_emendas.php">Minhas Emendas</a></li>

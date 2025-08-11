@@ -201,7 +201,7 @@ session_start(); //
     <header>
         <div class="logo">
             <a href="apresentacao.php" title="Ir para página inicial">
-                <img src="imagens/logo.png" alt="Logo SICEF">
+                <img src="imagens/logo.svg" alt="Logo SICEF">
             </a>
         </div>
         <nav>
@@ -239,7 +239,7 @@ session_start(); //
 
     <footer>
         <div class="footer-logo">
-            <img src="imagens/logo-branco.png" alt="Logo SICEF">
+            <img src="imagens/logo.svg" alt="Logo SICEF">
         </div>
         <h3>SICEF - Caderno de Emendas Federais</h3>
         <p>GDF - Governo do Distrito Federal</p>

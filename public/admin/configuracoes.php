@@ -68,7 +68,7 @@ if (isset($_SESSION["user"]["tipo"])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configurações - CICEF</title>
+    <title>Configurações - SICEF</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
@@ -533,7 +533,7 @@ if (isset($_SESSION["user"]["tipo"])) {
                                 <input type="hidden" name="action" value="update_system">
                                 <div class="form-group">
                                     <label for="system_name">Nome do Sistema:</label>
-                                    <input type="text" id="system_name" name="system_name" class="form-control" value="CICEF - Sistema de Emendas">
+                                    <input type="text" id="system_name" name="system_name" class="form-control" value="SICEF - Sistema de Emendas">
                                 </div>
                                 <div class="form-group">
                                     <label for="max_upload_size">Tamanho Máximo de Upload (MB):</label>
