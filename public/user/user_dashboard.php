@@ -1,1152 +1,821 @@
 <?php
 session_start();
-if (!isset($_SESSION['user'])) {
-    header('Location: ../login.php');
+if (!isset($_SESSION["user"])) {
+    header("Location: ../login.php");
+    exit;
+}
+require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../../vendor/autoload.php";
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+if (!class_exists("TCPDF")) {
+    die("TCPDF não está instalado. Por favor, instale via composer: composer require tecnickcom/tcpdf");
+}
+
+/**
+ * Exportação para Excel (colunas completas)
+ */
+function exportToExcel($data) {
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+
+    // Cabeçalhos
+    $sheet->setCellValue('A1', 'Tipo')
+        ->setCellValue('B1', 'Eixo Temático')
+        ->setCellValue('C1', 'Órgão')
+        ->setCellValue('D1', 'Objeto de Intervenção')
+        ->setCellValue('E1', 'ODS')
+        ->setCellValue('F1', 'Regionalização')
+        ->setCellValue('G1', 'Unidade Orçamentária')
+        ->setCellValue('H1', 'Programa')
+        ->setCellValue('I1', 'Ação')
+        ->setCellValue('J1', 'Categoria Econômica')
+        ->setCellValue('K1', 'Valor (R$)')
+        ->setCellValue('L1', 'Justificativa')
+        ->setCellValue('M1', 'Ano')
+        ->setCellValue('N1', 'Data Criação');
+
+    // Dados
+    $row = 2;
+    foreach ($data as $emenda) {
+        $sheet->setCellValue('A'.$row, $emenda['tipo_emenda'] ?? '')
+            ->setCellValue('B'.$row, $emenda['eixo_tematico'] ?? '')
+            ->setCellValue('C'.$row, $emenda['orgao'] ?? '')
+            ->setCellValue('D'.$row, $emenda['objeto_intervencao'] ?? '')
+            ->setCellValue('E'.$row, $emenda['ods'] ?? '-')
+            ->setCellValue('F'.$row, $emenda['regionalizacao'] ?? '-')
+            ->setCellValue('G'.$row, $emenda['unidade_orcamentaria'] ?? '-')
+            ->setCellValue('H'.$row, $emenda['programa'] ?? '-')
+            ->setCellValue('I'.$row, $emenda['acao'] ?? '-')
+            ->setCellValue('J'.$row, $emenda['categoria_economica'] ?? '-')
+            ->setCellValue('K'.$row, is_numeric($emenda['valor']) ? (float)$emenda['valor'] : $emenda['valor'])
+            ->setCellValue('L'.$row, $emenda['justificativa'] ?? '-')
+            ->setCellValue('M'.$row, isset($emenda['criado_em']) ? date('Y', strtotime($emenda['criado_em'])) : '-')
+            ->setCellValue('N'.$row, isset($emenda['criado_em']) ? date('d/m/Y H:i', strtotime($emenda['criado_em'])) : '-');
+        $row++;
+    }
+
+    // Estilo/colunas
+    $sheet->getStyle('A1:N1')->getFont()->setBold(true);
+    foreach(range('A','N') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+
+    // Download
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="relatorio_emendas.xlsx"');
+    header('Cache-Control: max-age=0');
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
     exit;
 }
 
-require_once __DIR__ . '/../../config/db.php';
-require_once __DIR__ . '/../../vendor/autoload.php';
+/**
+ * Exportação para PDF (colunas completas)
+ */
+function exportToPDF($data) {
+    $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
+    $pdf->SetCreator('Sistema CICEF');
+    $pdf->SetAuthor('Painel do Usuário');
+    $pdf->SetTitle('Relatório de Emendas');
+    $pdf->SetHeaderData('', 0, 'Relatório de Emendas', 'Gerado em ' . date('d/m/Y H:i'));
+    $pdf->setHeaderFont(Array(PDF_FONT_NAME_MAIN, '', PDF_FONT_SIZE_MAIN));
+    $pdf->setFooterFont(Array(PDF_FONT_NAME_DATA, '', PDF_FONT_SIZE_DATA));
+    $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
+    $pdf->SetMargins(PDF_MARGIN_LEFT, 15, PDF_MARGIN_RIGHT);
+    $pdf->SetHeaderMargin(PDF_MARGIN_HEADER);
+    $pdf->SetFooterMargin(PDF_MARGIN_FOOTER);
+    $pdf->SetAutoPageBreak(TRUE, PDF_MARGIN_BOTTOM);
+    $pdf->SetFont('helvetica', '', 8);
+    $pdf->AddPage();
 
-// Função para verificar tabelas
-function verificarTabela($pdo, $tabela) {
-    try {
-        $stmt = $pdo->query("SELECT 1 FROM $tabela LIMIT 1");
-        return true;
-    } catch (PDOException $e) {
-        error_log("Erro ao verificar tabela $tabela: " . $e->getMessage());
-        return false;
-    }
-}
+    $html = '<h2>Relatório de Emendas</h2><table border="1" cellpadding="3">';
+    $html .= '<tr style="background-color:#007b5e;color:white;">'
+        . '<th>Tipo</th>'
+        . '<th>Eixo</th>'
+        . '<th>Órgão</th>'
+        . '<th>Objeto</th>'
+        . '<th>ODS</th>'
+        . '<th>Regionalização</th>'
+        . '<th>Unid. Orç.</th>'
+        . '<th>Programa</th>'
+        . '<th>Ação</th>'
+        . '<th>Categoria</th>'
+        . '<th>Valor (R$)</th>'
+        . '<th>Justificativa</th>'
+        . '<th>Data</th>'
+        . '</tr>';
 
-// Verificar tabelas necessárias
-$tabelasNecessarias = ['usuarios', 'emendas', 'usuario_emendas'];
-$tabelasFaltantes = [];
-
-foreach ($tabelasNecessarias as $tabela) {
-    if (!verificarTabela($pdo, $tabela)) {
-        $tabelasFaltantes[] = $tabela;
-    }
-}
-
-if (!empty($tabelasFaltantes)) {
-    $tabelasList = implode(', ', $tabelasFaltantes);
-    die("<div style='padding: 20px; background: #f8d7da; color: #721c24; border-radius: 5px;'>
-        <h3>Erro no Banco de Dados</h3>
-        <p>As seguintes tabelas não foram encontradas ou estão inacessíveis: <strong>$tabelasList</strong></p>
-        <p>Por favor, verifique:</p>
-        <ol>
-            <li>Se as tabelas existem no banco de dados</li>
-            <li>Se as permissões estão corretas</li>
-            <li>Se os nomes das tabelas estão exatamente como: $tabelasList</li>
-        </ol>
-    </div>");
-}
-
-// Inicializar variáveis
-$minhas_emendas = [];
-$emendas_filtradas = [];
-$tipos_emenda = [];
-$eixos_tematicos = [];
-$unidades = [];
-$ods_values = [];
-
-try {
-    $usuario_id = $_SESSION['user']['id'];
-    
-    // Consulta principal
-    $sql = "SELECT e.* FROM emendas e
-            JOIN usuario_emendas ue ON e.id = ue.emenda_id
-            WHERE ue.usuario_id = ?
-            ORDER BY e.criado_em DESC";
-            
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$usuario_id]);
-    $minhas_emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Inicializar emendas_filtradas com todas as emendas inicialmente
-    $emendas_filtradas = $minhas_emendas;
-    
-    // Obter valores distintos para filtros
-    if (!empty($minhas_emendas)) {
-        // Obter tipos de emenda
-        $stmt = $pdo->prepare("SELECT DISTINCT tipo_emenda FROM emendas e
-                              JOIN usuario_emendas ue ON e.id = ue.emenda_id 
-                              WHERE ue.usuario_id = ?");
-        $stmt->execute([$usuario_id]);
-        $tipos_emenda = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        // Obter eixos temáticos
-        $stmt = $pdo->prepare("SELECT DISTINCT eixo_tematico FROM emendas e
-                               JOIN usuario_emendas ue ON e.id = ue.emenda_id 
-                               WHERE ue.usuario_id = ? 
-                               ORDER BY eixo_tematico");
-        $stmt->execute([$usuario_id]);
-        $eixos_tematicos = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        // Obter unidades
-        $stmt = $pdo->prepare("SELECT DISTINCT orgao FROM emendas e
-                              JOIN usuario_emendas ue ON e.id = ue.emenda_id 
-                              WHERE ue.usuario_id = ? 
-                              ORDER BY orgao");
-        $stmt->execute([$usuario_id]);
-        $unidades = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        // Obter ODS
-        $stmt = $pdo->prepare("SELECT DISTINCT ods FROM emendas e
-                              JOIN usuario_emendas ue ON e.id = ue.emenda_id 
-                              WHERE ue.usuario_id = ? 
-                              ORDER BY ods");
-        $stmt->execute([$usuario_id]);
-        $ods_values = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($data as $emenda) {
+        $html .= '<tr>'
+            . '<td>'.htmlspecialchars($emenda['tipo_emenda'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['eixo_tematico'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['orgao'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars(substr($emenda['objeto_intervencao'] ?? '-', 0, 50)).'...</td>'
+            . '<td>'.htmlspecialchars($emenda['ods'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['regionalizacao'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['unidade_orcamentaria'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['programa'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['acao'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['categoria_economica'] ?? '-').'</td>'
+            . '<td>'.(isset($emenda['valor']) ? number_format((float)$emenda['valor'], 2, ',', '.') : '-').'</td>'
+            . '<td>'.htmlspecialchars(substr($emenda['justificativa'] ?? '-', 0, 80)).'...</td>'
+            . '<td>'.(isset($emenda['criado_em']) ? date('d/m/Y', strtotime($emenda['criado_em'])) : '-').'</td>'
+            . '</tr>';
     }
 
-} catch (PDOException $e) {
-    die("<div style='padding: 20px; background: #f8d7da; color: #721c24; border-radius: 5px;'>
-        <h3>Erro na Consulta</h3>
-        <p>Ocorreu um erro ao acessar os dados.</p>
-        <p>Detalhes técnicos: " . htmlspecialchars($e->getMessage()) . "</p>
-        <p>Consulta executada: <code>" . htmlspecialchars(str_replace('?', "'{$usuario_id}'", $sql)) . "</code></p>
-    </div>");
+    $html .= '</table>';
+    $pdf->writeHTML($html, true, false, true, false, '');
+    $pdf->Output('relatorio_emendas.pdf', 'D');
+    exit;
 }
 
-// Função para renderizar seções de filtro
-function renderFilterSection($title, $filters, $currentValues) {
-    echo '<div class="filter-section">';
-    echo '<h3><span class="material-icons">filter_alt</span> '.htmlspecialchars($title).'</h3>';
-    
-    foreach ($filters as $filter) {
-        echo '<div class="filter-group">';
-        echo '<label for="'.htmlspecialchars($filter['name']).'">'.htmlspecialchars($filter['label']).'</label>';
-        
-        if ($filter['type'] === 'select') {
-            echo '<select id="'.htmlspecialchars($filter['name']).'" name="'.htmlspecialchars($filter['name']).'" class="filter-control">';
-            echo '<option value="">Selecione</option>';
-            
-            foreach ($filter['options'] as $value => $label) {
-                $selected = isset($currentValues[$filter['name']]) && $currentValues[$filter['name']] === $value ? 'selected' : '';
-                echo '<option value="'.htmlspecialchars($value).'" '.$selected.'>'.htmlspecialchars($label).'</option>';
+/* ----------------------------
+   Ações do usuário (add/remove)
+   ---------------------------- */
+$usuario_id = $_SESSION["user"]["id"];
+
+// Processar ações do usuário (adicionar/remover emenda às "minhas emendas")
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && isset($_POST["emenda_id"])) {
+    $emenda_id = $_POST["emenda_id"];
+    $action = $_POST["action"];
+    if ($action === "add") {
+        try {
+            $stmt = $pdo->prepare("INSERT INTO usuario_emendas (usuario_id, emenda_id) VALUES (?, ?)");
+            $stmt->execute([$usuario_id, $emenda_id]);
+            $_SESSION["message"] = "Emenda adicionada às suas emendas!";
+        } catch (PDOException $e) {
+            // Tratamento para chave duplicada (Postgres: 23505)
+            if ($e->getCode() == 23505 || strpos($e->getMessage(), 'Duplicate') !== false) {
+                $_SESSION["message"] = "Esta emenda já está nas suas emendas.";
+            } else {
+                $_SESSION["message"] = "Erro ao adicionar emenda: " . $e->getMessage();
             }
-            
-            echo '</select>';
-        } elseif ($filter['type'] === 'radio') {
-            echo '<div class="radio-group">';
-            
-            foreach ($filter['options'] as $value => $label) {
-                $checked = isset($currentValues[$filter['name']]) && $currentValues[$filter['name']] === $value ? 'checked' : '';
-                echo '<label class="radio-option">';
-                echo '<input type="radio" name="'.htmlspecialchars($filter['name']).'" value="'.htmlspecialchars($value).'" '.$checked.'>';
-                echo htmlspecialchars($label);
-                echo '</label>';
-            }
-            
-            echo '</div>';
-        } elseif ($filter['type'] === 'range') {
-            echo '<div class="range-group">';
-            echo '<input type="number" id="'.htmlspecialchars($filter['name'].'_de').'" name="'.htmlspecialchars($filter['name'].'_de').'" ';
-            echo 'class="filter-control" value="'.htmlspecialchars($currentValues[$filter['name'].'_de'] ?? '').'" ';
-            echo 'placeholder="De" min="'.htmlspecialchars($filter['min'] ?? '').'">';
-            
-            echo '<input type="number" id="'.htmlspecialchars($filter['name'].'_ate').'" name="'.htmlspecialchars($filter['name'].'_ate').'" ';
-            echo 'class="filter-control" value="'.htmlspecialchars($currentValues[$filter['name'].'_ate'] ?? '').'" ';
-            echo 'placeholder="Até" min="'.htmlspecialchars($filter['min'] ?? '').'">';
-            echo '</div>';
         }
-        
-        echo '</div>';
+    } elseif ($action === "remove") {
+        try {
+            $stmt = $pdo->prepare("DELETE FROM usuario_emendas WHERE usuario_id = ? AND emenda_id = ?");
+            $stmt->execute([$usuario_id, $emenda_id]);
+            $_SESSION["message"] = "Emenda removida das suas emendas!";
+        } catch (PDOException $e) {
+            $_SESSION["message"] = "Erro ao remover emenda: " . $e->getMessage();
+        }
     }
-    
-    echo '</div>';
+    header("Location: user_dashboard.php");
+    exit;
+}
+
+/* ----------------------------
+   Processar filtros
+   ---------------------------- */
+$where = [];
+$params = [];
+
+if ($_SERVER["REQUEST_METHOD"] === "GET") {
+    if (!empty($_GET["tipo_caderno"])) {
+        $where[] = "tipo_emenda = ?";
+        $params[] = $_GET["tipo_caderno"];
+    }
+    if (!empty($_GET["eixo_tematico"]) && $_GET["eixo_tematico"] !== "Selecione") {
+        $where[] = "eixo_tematico = ?";
+        $params[] = $_GET["eixo_tematico"];
+    }
+    if (!empty($_GET["unidade_responsavel"]) && $_GET["unidade_responsavel"] !== "Selecione") {
+        $where[] = "orgao = ?";
+        $params[] = $_GET["unidade_responsavel"];
+    }
+    if (!empty($_GET["ods"]) && $_GET["ods"] !== "Selecione") {
+        $where[] = "ods = ?";
+        $params[] = $_GET["ods"];
+    }
+    if (!empty($_GET["regionalizacao"]) && $_GET["regionalizacao"] !== "Selecione") {
+        $where[] = "regionalizacao = ?";
+        $params[] = $_GET["regionalizacao"];
+    }
+    if (!empty($_GET["unidade_orcamentaria"]) && $_GET["unidade_orcamentaria"] !== "Selecione") {
+        $where[] = "unidade_orcamentaria = ?";
+        $params[] = $_GET["unidade_orcamentaria"];
+    }
+    if (!empty($_GET["programa"]) && $_GET["programa"] !== "Selecione") {
+        $where[] = "programa = ?";
+        $params[] = $_GET["programa"];
+    }
+    if (!empty($_GET["acao"]) && $_GET["acao"] !== "Selecione") {
+        $where[] = "acao = ?";
+        $params[] = $_GET["acao"];
+    }
+    if (!empty($_GET["categoria_economica"]) && $_GET["categoria_economica"] !== "Selecione") {
+        $where[] = "categoria_economica = ?";
+        $params[] = $_GET["categoria_economica"];
+    }
+    if (!empty($_GET["valor_de"])) {
+        $where[] = "valor >= ?";
+        $params[] = $_GET["valor_de"];
+    }
+    if (!empty($_GET["valor_ate"])) {
+        $where[] = "valor <= ?";
+        $params[] = $_GET["valor_ate"];
+    }
+    if (!empty($_GET["ano_projeto"])) {
+        $where[] = "EXTRACT(YEAR FROM criado_em) = ?";
+        $params[] = $_GET["ano_projeto"];
+    }
+
+    // Ajuste: aplicar o filtro 'outros_recursos' sempre que fornecido (usa o valor enviado: 0 ou 1)
+    if (isset($_GET["outros_recursos"]) && $_GET["outros_recursos"] !== "") {
+        $where[] = "outros_recursos = ?";
+        $params[] = (int)$_GET["outros_recursos"];
+    }
+
+    // Processar exportação
+    if (isset($_GET["export"])) {
+        $export_type = $_GET["export"];
+        $sql = "SELECT * FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "") . " ORDER BY criado_em DESC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($export_type === "excel") {
+            exportToExcel($emendas);
+        } elseif ($export_type === "pdf") {
+            exportToPDF($emendas);
+        }
+        exit;
+    }
+}
+
+/* ----------------------------
+   Paginação & Consulta
+   ---------------------------- */
+$itens_por_pagina = 10;
+$pagina_atual = isset($_GET['pagina']) ? max(1, (int)$_GET['pagina']) : 1;
+$offset = ($pagina_atual - 1) * $itens_por_pagina;
+
+// total
+$sql_count = "SELECT COUNT(*) as total FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "");
+$stmt_count = $pdo->prepare($sql_count);
+$stmt_count->execute($params);
+$total_emendas = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
+$total_paginas = ($total_emendas > 0) ? (int)ceil($total_emendas / $itens_por_pagina) : 1;
+
+// query principal
+$sql = "SELECT * FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "") . " ORDER BY criado_em DESC LIMIT :limit OFFSET :offset";
+$stmt = $pdo->prepare($sql);
+if (!empty($params)) {
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key + 1, $value);
+    }
+}
+$stmt->bindValue(':limit', $itens_por_pagina, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+$stmt->execute();
+$emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// emendas do usuário (para mostrar botão add/remove)
+$stmt_user_emendas = $pdo->prepare("SELECT emenda_id FROM usuario_emendas WHERE usuario_id = ?");
+$stmt_user_emendas->execute([$usuario_id]);
+$user_emenda_ids = $stmt_user_emendas->fetchAll(PDO::FETCH_COLUMN);
+
+/* ----------------------------
+   Valores distintos para filtros
+   ---------------------------- */
+// Adicionei "OUTROS RECURSOS" aqui também
+$tipos_emenda = ['EMENDA PARLAMENTAR FEDERAL', 'OPERAÇÃO DE CRÉDITO', 'OUTROS RECURSOS'];
+$eixos_tematicos = $pdo->query("SELECT DISTINCT eixo_tematico FROM emendas ORDER BY eixo_tematico")->fetchAll(PDO::FETCH_COLUMN);
+$unidades = $pdo->query("SELECT DISTINCT orgao FROM emendas ORDER BY orgao")->fetchAll(PDO::FETCH_COLUMN);
+$ods_values = $pdo->query("SELECT DISTINCT ods FROM emendas ORDER BY ods")->fetchAll(PDO::FETCH_COLUMN);
+$regionalizacoes = $pdo->query("SELECT DISTINCT regionalizacao FROM emendas ORDER BY regionalizacao")->fetchAll(PDO::FETCH_COLUMN);
+$unidades_orcamentarias = $pdo->query("SELECT DISTINCT unidade_orcamentaria FROM emendas ORDER BY unidade_orcamentaria")->fetchAll(PDO::FETCH_COLUMN);
+$programas = $pdo->query("SELECT DISTINCT programa FROM emendas ORDER BY programa")->fetchAll(PDO::FETCH_COLUMN);
+$acoes = $pdo->query("SELECT DISTINCT acao FROM emendas ORDER BY acao")->fetchAll(PDO::FETCH_COLUMN);
+$categorias_economicas = $pdo->query("SELECT DISTINCT categoria_economica FROM emendas ORDER BY categoria_economica")->fetchAll(PDO::FETCH_COLUMN);
+$anos = $pdo->query("SELECT DISTINCT EXTRACT(YEAR FROM criado_em) as ano FROM emendas ORDER BY ano DESC")->fetchAll(PDO::FETCH_COLUMN);
+
+/* ----------------------------
+   Cores / UI
+   ---------------------------- */
+$user_colors = [
+    'primary' => '#007b5e',
+    'secondary' => '#4db6ac',
+    'accent' => '#ffc107'
+];
+if (isset($_SESSION["user"]["tipo"])) {
+    switch ($_SESSION["user"]["tipo"]) {
+        case 'Deputado':
+            $user_colors = [
+                'primary' => '#018bd2',
+                'secondary' => '#51ae32',
+                'accent' => '#fdfefe'
+            ];
+            break;
+        case 'Senador':
+            $user_colors = [
+                'primary' => '#51b949',
+                'secondary' => '#0094db',
+                'accent' => '#fefefe'
+            ];
+            break;
+        case 'Administrador':
+            $user_colors = [
+                'primary' => '#6f42c1',
+                'secondary' => '#e83e8c',
+                'accent' => '#fd7e14'
+            ];
+            break;
+    }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minhas Emendas - CICEF</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <style>
-        :root {
-            --primary-color: #007b5e;
-            --secondary-color: #4db6ac;
-            --accent-color: #ffc107;
-            --dark-color: #003366;
-            --light-color: #f8f9fa;
-            --sidebar-color: #2c3e50;
-            --text-color: #333;
-            --border-color: #e0e0e0;
-            --hover-color: #f1f1f1;
-            --shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #f5f7fa;
-            color: var(--text-color);
-            line-height: 1.6;
-            display: flex;
-            min-height: 100vh;
-        }
-        
-        /* Sidebar */
-        .sidebar {
-            width: 280px;
-            background-color: var(--sidebar-color);
-            color: white;
-            padding: 1.5rem 0;
-            position: fixed;
-            height: 100vh;
-            transition: all 0.3s;
-            z-index: 100;
-        }
-        
-        .sidebar-header {
-            padding: 0 1.5rem 1.5rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        
-        .sidebar-header h2 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        
-        .sidebar-menu {
-            padding: 1rem 0;
-        }
-        
-        .menu-item {
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-decoration: none;
-            color: rgba(255,255,255,0.8);
-        }
-        
-        .menu-item:hover, .menu-item.active {
-            background-color: rgba(255,255,255,0.1);
-            color: white;
-            border-left: 3px solid var(--secondary-color);
-        }
-        
-        .menu-item .material-icons {
-            font-size: 1.25rem;
-        }
-        
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            margin-left: 280px;
-            transition: all 0.3s;
-        }
-        
-        /* Header */
-        .header {
-            background: white;
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: var(--shadow);
-            position: sticky;
-            top: 0;
-            z-index: 90;
-        }
-        
-        .header h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: var(--dark-color);
-        }
-        
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-        }
-        
-        .user-menu a {
-            color: var(--dark-color);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: all 0.3s;
-            font-weight: 500;
-        }
-        
-        .user-menu a:hover {
-            color: var(--primary-color);
-        }
-        
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: var(--secondary-color);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-        }
-        
-        /* Content */
-        .content {
-            padding: 2rem;
-        }
-        
-        .welcome-section {
-            margin-bottom: 2rem;
-        }
-        
-        .welcome-section h2 {
-            font-size: 1.8rem;
-            color: var(--dark-color);
-            margin-bottom: 0.5rem;
-        }
-        
-        .welcome-section p {
-            color: #666;
-        }
-        
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: var(--shadow);
-            transition: transform 0.3s;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .stat-card h3 {
-            display: flex;
-            align-items: center;
-            font-size: 1rem;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-            font-weight: 600;
-        }
-        
-        .stat-card .material-icons {
-            margin-right: 0.5rem;
-            color: var(--secondary-color);
-        }
-        
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--dark-color);
-            margin-bottom: 0.5rem;
-        }
-        
-        .stat-description {
-            color: #666;
-            font-size: 0.9rem;
-        }
-        
-        /* Tabs */
-        .tab-container {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: var(--shadow);
-            margin-bottom: 2rem;
-        }
-        
-        .tabs {
-            display: flex;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 1.5rem;
-        }
-        
-        .tab {
-            padding: 0.75rem 1.5rem;
-            cursor: pointer;
-            font-weight: 500;
-            color: #7f8c8d;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-        }
-        
-        .tab.active {
-            color: var(--primary-color);
-            border-bottom-color: var(--primary-color);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        /* Filtros */
-        .filters-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: var(--shadow);
-        }
-        
-        .filter-section {
-            margin-bottom: 1.5rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .filter-section:last-child {
-            margin-bottom: 0;
-            padding-bottom: 0;
-            border-bottom: none;
-        }
-        
-        .filter-section h3 {
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-            font-size: 1.1rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .filter-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .filter-group {
-            margin-bottom: 1rem;
-        }
-        
-        .filter-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: var(--dark-color);
-            font-size: 0.9rem;
-        }
-        
-        .filter-control {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            font-size: 0.95rem;
-            transition: border-color 0.3s, box-shadow 0.3s;
-            background-color: white;
-        }
-        
-        .filter-control:focus {
-            border-color: var(--secondary-color);
-            box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.2);
-            outline: none;
-        }
-        
-        .radio-group {
-            display: flex;
-            gap: 1.5rem;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-        }
-        
-        .radio-option {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-        }
-        
-        .radio-option input[type="radio"] {
-            accent-color: var(--secondary-color);
-        }
-        
-        .range-group {
-            display: flex;
-            gap: 1rem;
-        }
-        
-        .range-group .filter-control {
-            flex: 1;
-        }
-        
-        .filter-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        
-        /* Filtros Aplicados */
-        .applied-filters {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            border: 1px solid #e0e0e0;
-        }
-        
-        .applied-filters h4 {
-            font-size: 0.9rem;
-            color: #6c757d;
-            margin-bottom: 0.5rem;
-        }
-        
-        .filter-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-        
-        .filter-tag {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 20px;
-            padding: 0.25rem 0.75rem;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-        
-        .remove-filter {
-            color: #6c757d;
-            text-decoration: none;
-            display: inline-flex;
-            margin-left: 0.25rem;
-        }
-        
-        .remove-filter .material-icons {
-            font-size: 1rem;
-        }
-        
-        .remove-filter:hover {
-            color: #dc3545;
-        }
-        
-        /* Botões */
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.95rem;
-            font-weight: 500;
-            border: none;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .btn-primary {
-            background-color: var(--secondary-color);
-            color: white;
-        }
-        
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background-color: #3da89e;
-            transform: translateY(-2px);
-        }
-        
-        .btn-secondary:hover {
-            background-color: #5a6268;
-            transform: translateY(-2px);
-        }
-        
-        /* Export Section */
-        .export-section {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: var(--shadow);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .export-title {
-            font-size: 1.1rem;
-            color: var(--primary-color);
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .export-actions {
-            display: flex;
-            gap: 1rem;
-        }
-        
-        .export-btn {
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.95rem;
-            font-weight: 500;
-            border: none;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            text-decoration: none;
-        }
-        
-        .export-excel {
-            background-color: #1d6f42;
-            color: white;
-        }
-        
-        .export-pdf {
-            background-color: #d32f2f;
-            color: white;
-        }
-        
-        .export-excel:hover {
-            background-color: #165a36;
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
-        }
-        
-        .export-pdf:hover {
-            background-color: #b71c1c;
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
-        }
-        
-        /* Table */
-        .emendas-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-        }
-        
-        .emendas-table thead th {
-            background-color: var(--primary-color);
-            color: white;
-            font-weight: 600;
-            padding: 1rem;
-            text-align: left;
-            position: sticky;
-            top: 68px;
-        }
-        
-        .emendas-table tbody tr {
-            transition: background-color 0.2s;
-        }
-        
-        .emendas-table tbody tr:hover {
-            background-color: var(--hover-color);
-        }
-        
-        .emendas-table td {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            vertical-align: top;
-        }
-        
-        .emendas-table tr:last-child td {
-            border-bottom: none;
-        }
-        
-        .actions-cell {
-            white-space: nowrap;
-        }
-        
-        .action-link {
-            color: var(--secondary-color);
-            text-decoration: none;
-            margin-right: 1rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            font-weight: 500;
-            transition: color 0.3s;
-        }
-        
-        .action-link:hover {
-            color: var(--primary-color);
-            text-decoration: underline;
-        }
-        
-        .action-link.danger {
-            color: #dc3545;
-        }
-        
-        .action-link.danger:hover {
-            color: #c82333;
-        }
-        
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #666;
-            background: white;
-            border-radius: 12px;
-            box-shadow: var(--shadow);
-        }
-        
-        /* Responsividade */
-        @media (max-width: 1200px) {
-            .sidebar {
-                width: 240px;
-            }
-            
-            .main-content {
-                margin-left: 240px;
-            }
-        }
-        
-        @media (max-width: 992px) {
-            .sidebar {
-                transform: translateX(-100%);
-                width: 280px;
-            }
-            
-            .sidebar.active {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-            }
-            
-            .menu-toggle {
-                display: block;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .header {
-                padding: 1rem;
-            }
-            
-            .content {
-                padding: 1.5rem;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .filter-row {
-                grid-template-columns: 1fr;
-            }
-            
-            .radio-group {
-                flex-direction: column;
-                gap: 0.75rem;
-            }
-            
-            .range-group {
-                flex-direction: column;
-                gap: 0.75rem;
-            }
-            
-            .export-section {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-            
-            .export-actions {
-                width: 100%;
-                flex-direction: column;
-            }
-            
-            .export-btn {
-                width: 100%;
-                justify-content: center;
-            }
-            
-            .emendas-table {
-                display: block;
-                overflow-x: auto;
-            }
-            
-            .emendas-table thead th {
-                top: 60px;
-            }
-        }
-        
-        /* Menu Toggle */
-        .menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: var(--dark-color);
-            font-size: 1.5rem;
-            cursor: pointer;
-            margin-right: 1rem;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel do Usuário - CICEF</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+:root { --primary-color: <?= $user_colors['primary'] ?>; --secondary-color: <?= $user_colors['secondary'] ?>; --accent-color: <?= $user_colors['accent'] ?>; --dark-color: #2c3e50; --light-color: #f8f9fa; --border-color: #e0e0e0; --error-color: #e74c3c; --success-color: #2ecc71; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333; line-height: 1.6; overflow-x: hidden; }
+.user-container { display: flex; min-height: 100vh; }
+/* Sidebar */
+.user-sidebar { width: 250px; background-color: var(--dark-color); color: white; padding: 1.5rem 0; position: fixed; height: 100vh; transition: all 0.3s; z-index: 100; overflow-y: auto; }
+.sidebar-header { padding: 0 1.5rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.sidebar-header h2 { font-size: 1.25rem; display: flex; align-items: center; gap: 0.75rem; }
+.sidebar-menu { padding: 1rem 0; }
+.sidebar-menu a { display: flex; align-items: center; padding: 0.75rem 1.5rem; color: rgba(255,255,255,0.8); text-decoration: none; transition: all 0.3s; gap: 0.75rem; }
+.sidebar-menu a:hover, .sidebar-menu a.active { background-color: rgba(255,255,255,0.1); color: white; }
+.sidebar-menu i { font-size: 1.25rem; }
+/* Main Content */
+.user-content { flex: 1; margin-left: 250px; transition: all 0.3s; width: calc(100% - 250px); }
+/* Header */
+.user-header { background: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 90; }
+.user-header h1 { font-size: 1.5rem; color: var(--dark-color); }
+.menu-toggle { display: none; background: none; border: none; color: var(--dark-color); font-size: 1.5rem; cursor: pointer; }
+.user-area { display: flex; align-items: center; gap: 1rem; }
+.user-icon { width: 40px; height: 40px; border-radius: 50%; background-color: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1.2rem; }
+.user-name { font-weight: 500; }
+.logout-btn { color: var(--dark-color); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 6px; transition: all 0.3s; }
+.logout-btn:hover { background-color: var(--light-color); }
+/* Content Area */
+.content-area { padding: 2rem; max-width: 100%; }
+/* Sections */
+.export-section, .filters-section, .emendas-section { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+.export-section h2, .filters-section h2 { font-size: 1.25rem; color: var(--primary-color); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+/* Buttons */
+.btn { display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; cursor: pointer; text-decoration: none; transition: all 0.3s; border: none; gap: 0.5rem; }
+.btn-primary { background-color: var(--primary-color); color: white; }
+.btn-primary:hover { opacity: 0.9; transform: translateY(-2px); }
+.btn-secondary { background-color: #6c757d; color: white; }
+.btn-secondary:hover { background-color: #5a6268; transform: translateY(-2px); }
+.btn-success { background-color: var(--success-color); color: white; }
+.btn-success:hover { background-color: #27ae60; transform: translateY(-2px); }
+.btn-danger { background-color: var(--error-color); color: white; }
+.btn-danger:hover { background-color: #c0392b; transform: translateY(-2px); }
+/* Export Buttons */
+.export-buttons { display: flex; gap: 1rem; flex-wrap: wrap; }
+/* Filters */
+.filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.filter-group { display: flex; flex-direction: column; }
+.filter-group label { font-weight: 500; margin-bottom: 0.5rem; color: var(--dark-color); }
+.form-control { padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; font-family: inherit; transition: border-color 0.3s; }
+.form-control:focus { border-color: var(--primary-color); outline: none; }
+.filter-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+/* Table Container - Responsivo */
+.table-container { width: 100%; overflow-x: auto; margin-bottom: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+.emendas-table { width: 100%; min-width: 1200px; border-collapse: collapse; background: white; }
+.emendas-table thead th { background-color: var(--primary-color); color: white; font-weight: 600; padding: 1rem 0.75rem; text-align: left; position: sticky; top: 0; z-index: 10; white-space: nowrap; }
+.emendas-table tbody tr { transition: background-color 0.2s; border-bottom: 1px solid var(--border-color); }
+.emendas-table tbody tr:hover { background-color: #f8f9fa; }
+.emendas-table td { padding: 1rem 0.75rem; vertical-align: top; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.emendas-table td.description { max-width: 300px; white-space: normal; line-height: 1.4; }
+.action-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; }
+/* Pagination */
+.pagination { display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 2rem; flex-wrap: wrap; }
+.pagination a, .pagination span { padding: 0.5rem 1rem; border: 1px solid var(--border-color); border-radius: 6px; text-decoration: none; color: var(--dark-color); transition: all 0.3s; }
+.pagination a:hover { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
+.pagination .current { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
+/* Messages */
+.message { padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+.message-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.message-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .user-sidebar { transform: translateX(-100%); }
+  .user-sidebar.active { transform: translateX(0); }
+  .user-content { margin-left: 0; width: 100%; }
+  .menu-toggle { display: block; }
+  .user-header { padding: 1rem; }
+  .content-area { padding: 1rem; }
+  .filters-grid { grid-template-columns: 1fr; }
+  .export-buttons { flex-direction: column; }
+  .filter-actions { flex-direction: column; }
+  .emendas-table { min-width: 800px; }
+  .action-buttons { flex-direction: column; }
+  .user-area { gap: 0.5rem; }
+  .user-name { display: none; }
+}
+@media (max-width: 480px) {
+  .user-header h1 { font-size: 1.25rem; }
+  .emendas-table { min-width: 600px; }
+  .emendas-table th, .emendas-table td { padding: 0.5rem; font-size: 0.875rem; }
+}
+/* Overlay para mobile */
+.sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 99; }
+.sidebar-overlay.active { display: block; }
+</style>
 </head>
 <body>
+<div class="user-container">
     <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
+    <nav class="user-sidebar" id="sidebar">
         <div class="sidebar-header">
             <h2>
-                <span class="material-icons">account_circle</span>
-                Meu Painel
+                <i class="material-icons">account_circle</i> Painel Usuário
             </h2>
         </div>
         <div class="sidebar-menu">
-            <a href="user_dashboard.php" class="menu-item active">
-                <span class="material-icons">list_alt</span>
-                Minhas Emendas
+            <a href="user_dashboard.php" class="active">
+                <i class="material-icons">dashboard</i> Emendas
             </a>
-            <a href="selecionar_emendas.php" class="menu-item">
-                <span class="material-icons">add_circle</span>
-                Selecionar Emendas
+            <a href="minhas_emendas.php">
+                <i class="material-icons">star</i> Minhas Emendas
             </a>
-            <a href="meu_perfil.php" class="menu-item">
-                <span class="material-icons">person</span>
-                Meu Perfil
-            </a>
+            <!-- lateral "Outros Recursos" removido conforme solicitado -->
         </div>
-    </div>
-    
+    </nav>
+
+    <!-- Overlay para mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- Main Content -->
-    <div class="main-content">
+    <main class="user-content">
         <!-- Header -->
-        <div class="header">
-            <button class="menu-toggle" id="menuToggle">
-                <span class="material-icons">menu</span>
-            </button>
-            <h1>Minhas Emendas</h1>
-            <div class="user-menu">
-                <div class="user-info">
-                    <div class="user-avatar">
-                        <?= strtoupper(substr($_SESSION['user']['nome'], 0, 1)) ?>
-                    </div>
-                    <span><?= htmlspecialchars($_SESSION['user']['nome']) ?></span>
-                </div>
-                <a href="../logout.php">
-                    <span class="material-icons">logout</span>
-                    Sair
+        <header class="user-header">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <button class="menu-toggle" onclick="toggleSidebar()">
+                    <i class="material-icons">menu</i>
+                </button>
+                <h1>Emendas Disponíveis</h1>
+            </div>
+            <div class="user-area">
+                <div class="user-icon"> <?= strtoupper(substr($_SESSION["user"]["nome"], 0, 1)) ?> </div>
+                <span class="user-name"><?= htmlspecialchars($_SESSION["user"]["nome"]) ?></span>
+                <a href="../logout.php" class="logout-btn">
+                    <i class="material-icons">logout</i> Sair
                 </a>
             </div>
-        </div>
-        
-        <!-- Content -->
-        <div class="content">
-            <section class="welcome-section">
-                <h2>Olá, <?= htmlspecialchars($_SESSION['user']['nome']) ?>!</h2>
-                <p>Aqui você pode visualizar e gerenciar suas emendas selecionadas</p>
-            </section>
-            
-            <!-- Estatísticas -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3><span class="material-icons">list_alt</span> Total de Emendas</h3>
-                    <div class="stat-value"><?= count($minhas_emendas) ?></div>
-                    <div class="stat-description">Emendas selecionadas</div>
-                </div>
-                
-                <div class="stat-card">
-                    <h3><span class="material-icons">category</span> Tipos Diferentes</h3>
-                    <div class="stat-value"><?= count($tipos_emenda) ?></div>
-                    <div class="stat-description">Tipos de emendas</div>
-                </div>
-                
-                <div class="stat-card">
-                    <h3><span class="material-icons">assessment</span> Eixos Diferentes</h3>
-                    <div class="stat-value"><?= count($eixos_tematicos) ?></div>
-                    <div class="stat-description">Eixos temáticos</div>
-                </div>
-            </div>
-            
-            <!-- Abas para navegação -->
-            <div class="tab-container">
-                <div class="tabs">
-                    <div class="tab active" data-tab="todas">Todas as Emendas</div>
-                    <div class="tab" data-tab="filtros">Filtrar Emendas</div>
-                </div>
-                
-                <!-- Conteúdo da aba Todas as Emendas -->
-                <div class="tab-content active" id="todas">
-                    <?php if (!empty($minhas_emendas)): ?>
-                    <div class="export-section">
-                        <div class="export-title">
-                            <span class="material-icons">description</span>
-                            Exportar Minhas Emendas
-                        </div>
-                        <div class="export-actions">
-                            <a href="?export=excel" class="export-btn export-excel">
-                                <span class="material-icons">description</span>
-                                Exportar para Excel
-                            </a>
-                            <a href="?export=pdf" class="export-btn export-pdf">
-                                <span class="material-icons">picture_as_pdf</span>
-                                Exportar para PDF
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <table class="emendas-table">
-                        <thead>
-                            <tr>
-                                <th>Tipo</th>
-                                <th>Eixo Temático</th>
-                                <th>Unidade</th>
-                                <th>Objeto</th>
-                                <th>ODS</th>
-                                <th>Data</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($minhas_emendas as $emenda): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($emenda['tipo_emenda']) ?></td>
-                                <td><?= htmlspecialchars($emenda['eixo_tematico']) ?></td>
-                                <td><?= htmlspecialchars($emenda['orgao']) ?></td>
-                                <td><?= htmlspecialchars(substr($emenda['objeto_intervencao'], 0, 50)) ?><?= strlen($emenda['objeto_intervencao']) > 50 ? '...' : '' ?></td>
-                                <td><?= htmlspecialchars($emenda['ods'] ?? '-') ?></td>
-                                <td><?= date('d/m/Y', strtotime($emenda['criado_em'])) ?></td>
-                                <td class="actions-cell">
-                                    <a href="visualizar_emenda.php?id=<?= $emenda['id'] ?>" class="action-link">
-                                        <span class="material-icons" style="font-size: 1.1rem;">visibility</span>
-                                        Visualizar
-                                    </a>
-                                    <form method="POST" action="remover_emenda.php" style="display: inline;">
-                                        <input type="hidden" name="emenda_id" value="<?= $emenda['id'] ?>">
-                                        <button type="submit" class="action-link danger" onclick="return confirm('Tem certeza que deseja remover esta emenda da sua lista?')">
-                                            <span class="material-icons" style="font-size: 1.1rem;">delete</span>
-                                            Remover
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?>
-                    <div class="empty-state">
-                        <h3>Nenhuma emenda selecionada</h3>
-                        <p>Você ainda não selecionou nenhuma emenda. <a href="selecionar_emendas.php">Clique aqui</a> para começar.</p>
-                    </div>
-                    <?php endif; ?>
-                </div>
-                
-                <!-- Conteúdo da aba Filtrar Emendas -->
-                <div class="tab-content" id="filtros">
-                    <div class="filters-card">
-                        <form method="GET" action="user_dashboard.php">
-                            <?php
-                            $currentValues = $_GET;
-                            
-                            // Tipo de Emenda
-                            renderFilterSection('Tipo de Emenda', [
-                                [
-                                    'name' => 'tipo_caderno',
-                                    'label' => 'Selecione o tipo',
-                                    'type' => 'radio',
-                                    'options' => array_combine($tipos_emenda, $tipos_emenda)
-                                ]
-                            ], $currentValues);
-                            
-                            // Filtros Avançados
-                            renderFilterSection('Filtrar por', [
-                                [
-                                    'name' => 'eixo_tematico',
-                                    'label' => 'Eixo Temático',
-                                    'type' => 'select',
-                                    'options' => array_combine($eixos_tematicos, $eixos_tematicos)
-                                ],
-                                [
-                                    'name' => 'ods',
-                                    'label' => 'ODS',
-                                    'type' => 'select',
-                                    'options' => array_combine($ods_values, $ods_values)
-                                ],
-                                [
-                                    'name' => 'unidade_responsavel',
-                                    'label' => 'Unidade Responsável',
-                                    'type' => 'select',
-                                    'options' => array_combine($unidades, $unidades)
-                                ]
-                            ], $currentValues);
-                            ?>
-                            
-                            <div class="filter-actions">
-                                <button type="submit" class="btn btn-primary">
-                                    <span class="material-icons">filter_alt</span>
-                                    Aplicar Filtros
-                                </button>
-                                <a href="user_dashboard.php" class="btn btn-secondary">
-                                    <span class="material-icons">clear</span>
-                                    Limpar Filtros
-                                </a>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <?php if (!empty($_GET)): ?>
-                    <div class="applied-filters">
-                        <h4>Filtros Aplicados:</h4>
-                        <div class="filter-tags">
-                            <?php foreach ($_GET as $key => $value): ?>
-                                <?php if (!empty($value) && !in_array($key, ['export', 'page'])): ?>
-                                    <span class="filter-tag">
-                                        <?= htmlspecialchars(ucfirst(str_replace('_', ' ', $key))) ?>: 
-                                        <?= htmlspecialchars($value) ?>
-                                        <a href="?" class="remove-filter">
-                                            <?php 
-                                            $newGet = $_GET;
-                                            unset($newGet[$key]);
-                                            $queryString = http_build_query($newGet);
-                                            ?>
-                                            <span class="material-icons">close</span>
-                                        </a>
-                                    </span>
-                                <?php endif; ?>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if (!empty($emendas_filtradas)): ?>
-                    <table class="emendas-table">
-                        <thead>
-                            <tr>
-                                <th>Tipo</th>
-                                <th>Eixo Temático</th>
-                                <th>Unidade</th>
-                                <th>Objeto</th>
-                                <th>ODS</th>
-                                <th>Data</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($emendas_filtradas as $emenda): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($emenda['tipo_emenda']) ?></td>
-                                <td><?= htmlspecialchars($emenda['eixo_tematico']) ?></td>
-                                <td><?= htmlspecialchars($emenda['orgao']) ?></td>
-                                <td><?= htmlspecialchars(substr($emenda['objeto_intervencao'], 0, 50)) ?><?= strlen($emenda['objeto_intervencao']) > 50 ? '...' : '' ?></td>
-                                <td><?= htmlspecialchars($emenda['ods'] ?? '-') ?></td>
-                                <td><?= date('d/m/Y', strtotime($emenda['criado_em'])) ?></td>
-                                <td class="actions-cell">
-                                    <a href="visualizar_emenda.php?id=<?= $emenda['id'] ?>" class="action-link">
-                                        <span class="material-icons" style="font-size: 1.1rem;">visibility</span>
-                                        Visualizar
-                                    </a>
-                                    <form method="POST" action="remover_emenda.php" style="display: inline;">
-                                        <input type="hidden" name="emenda_id" value="<?= $emenda['id'] ?>">
-                                        <button type="submit" class="action-link danger" onclick="return confirm('Tem certeza que deseja remover esta emenda da sua lista?')">
-                                            <span class="material-icons" style="font-size: 1.1rem;">delete</span>
-                                            Remover
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?>
-                    <div class="empty-state">
-                        <h3>Nenhuma emenda encontrada</h3>
-                        <p>Não há resultados com os filtros selecionados.</p>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
+        </header>
 
-    <script>
-        // Menu Toggle para mobile
-        const menuToggle = document.getElementById('menuToggle');
-        const sidebar = document.getElementById('sidebar');
-        
-        menuToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('active');
-        });
-        
-        // Fechar menu ao clicar fora (para mobile)
-        document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 992 && !sidebar.contains(e.target) && e.target !== menuToggle) {
-                sidebar.classList.remove('active');
-            }
-        });
-        
-        // Controle das abas
-        const tabs = document.querySelectorAll('.tab');
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                // Remover classe active de todas as abas e conteúdos
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                
-                // Adicionar classe active à aba clicada e ao conteúdo correspondente
-                tab.classList.add('active');
-                const tabId = tab.getAttribute('data-tab');
-                document.getElementById(tabId).classList.add('active');
-            });
-        });
-        
-        // Validação dos filtros de intervalo
-        const rangeInputs = document.querySelectorAll('.range-group input');
-        rangeInputs.forEach(input => {
-            input.addEventListener('change', function() {
-                const minInput = document.getElementById(this.name.replace('_ate', '_de'));
-                const maxInput = document.getElementById(this.name.replace('_de', '_ate'));
-                
-                if (minInput && maxInput && minInput.value && maxInput.value && parseFloat(minInput.value) > parseFloat(maxInput.value)) {
-                    alert('O valor "De" deve ser menor que o valor "Até"');
-                    this.value = '';
-                }
-            });
-        });
-    </script>
+        <!-- Content Area -->
+        <div class="content-area">
+            <?php if (isset($_SESSION["message"])): ?>
+                <div class="message <?= strpos($_SESSION["message"], 'Erro') !== false ? 'message-error' : 'message-success' ?>">
+                    <i class="material-icons"><?= strpos($_SESSION["message"], 'Erro') !== false ? 'error' : 'check_circle' ?></i>
+                    <?= htmlspecialchars($_SESSION["message"]) ?>
+                </div>
+                <?php unset($_SESSION["message"]); ?>
+            <?php endif; ?>
+
+            <!-- Export Section -->
+            <section class="export-section">
+                <h2>
+                    <i class="material-icons">file_download</i> Exportar Dados
+                </h2>
+                <div class="export-buttons">
+                    <a href="?export=excel&<?= http_build_query($_GET) ?>" class="btn btn-success">
+                        <i class="material-icons">table_chart</i> Exportar Excel
+                    </a>
+                    <a href="?export=pdf&<?= http_build_query($_GET) ?>" class="btn btn-danger">
+                        <i class="material-icons">picture_as_pdf</i> Exportar PDF
+                    </a>
+                </div>
+            </section>
+
+            <!-- Filters Section -->
+            <section class="filters-section">
+                <h2>
+                    <i class="material-icons">filter_list</i> Filtros
+                </h2>
+                <form method="GET" action="user_dashboard.php">
+                    <div class="filters-grid">
+                        <div class="filter-group">
+                            <label for="tipo_caderno">Tipo de Caderno:</label>
+                            <select name="tipo_caderno" id="tipo_caderno" class="form-control">
+                                <option value="">Todos</option>
+                                <?php foreach ($tipos_emenda as $tipo): ?>
+                                    <option value="<?= htmlspecialchars($tipo) ?>" <?= ($_GET["tipo_caderno"] ?? "") === $tipo ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($tipo) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="eixo_tematico">Eixo Temático:</label>
+                            <select name="eixo_tematico" id="eixo_tematico" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($eixos_tematicos as $eixo): ?>
+                                    <option value="<?= htmlspecialchars($eixo) ?>" <?= ($_GET["eixo_tematico"] ?? "") === $eixo ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($eixo) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="unidade_responsavel">Unidade Responsável:</label>
+                            <select name="unidade_responsavel" id="unidade_responsavel" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($unidades as $unidade): ?>
+                                    <option value="<?= htmlspecialchars($unidade) ?>" <?= ($_GET["unidade_responsavel"] ?? "") === $unidade ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($unidade) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="ods">ODS:</label>
+                            <select name="ods" id="ods" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($ods_values as $ods): ?>
+                                    <option value="<?= htmlspecialchars($ods) ?>" <?= ($_GET["ods"] ?? "") === $ods ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($ods) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="regionalizacao">Regionalização:</label>
+                            <select name="regionalizacao" id="regionalizacao" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($regionalizacoes as $reg): ?>
+                                    <option value="<?= htmlspecialchars($reg) ?>" <?= ($_GET["regionalizacao"] ?? "") === $reg ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($reg) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="unidade_orcamentaria">Unidade Orçamentária:</label>
+                            <select name="unidade_orcamentaria" id="unidade_orcamentaria" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($unidades_orcamentarias as $uo): ?>
+                                    <option value="<?= htmlspecialchars($uo) ?>" <?= ($_GET["unidade_orcamentaria"] ?? "") === $uo ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($uo) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="programa">Programa:</label>
+                            <select name="programa" id="programa" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($programas as $prog): ?>
+                                    <option value="<?= htmlspecialchars($prog) ?>" <?= ($_GET["programa"] ?? "") === $prog ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($prog) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="acao">Ação:</label>
+                            <select name="acao" id="acao" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($acoes as $acao): ?>
+                                    <option value="<?= htmlspecialchars($acao) ?>" <?= ($_GET["acao"] ?? "") === $acao ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($acao) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="categoria_economica">Categoria Econômica:</label>
+                            <select name="categoria_economica" id="categoria_economica" class="form-control">
+                                <option value="">Selecione</option>
+                                <?php foreach ($categorias_economicas as $cat): ?>
+                                    <option value="<?= htmlspecialchars($cat) ?>" <?= ($_GET["categoria_economica"] ?? "") === $cat ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($cat) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="valor_de">Valor Pretendido (De):</label>
+                            <input type="number" step="0.01" name="valor_de" id="valor_de" class="form-control" value="<?= htmlspecialchars($_GET["valor_de"] ?? "") ?>" placeholder="0,00">
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="valor_ate">Valor Pretendido (Até):</label>
+                            <input type="number" step="0.01" name="valor_ate" id="valor_ate" class="form-control" value="<?= htmlspecialchars($_GET["valor_ate"] ?? "") ?>" placeholder="0,00">
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="ano_projeto">Ano do Projeto:</label>
+                            <select name="ano_projeto" id="ano_projeto" class="form-control">
+                                <option value="">Todos</option>
+                                <?php foreach ($anos as $ano): ?>
+                                    <option value="<?= htmlspecialchars($ano) ?>" <?= ($_GET["ano_projeto"] ?? "") == $ano ? "selected" : "" ?>>
+                                        <?= htmlspecialchars($ano) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="filter-group" id="outros_recursos_filter" style="display: none;">
+                            <label for="outros_recursos">Outros Recursos:</label>
+                            <select name="outros_recursos" id="outros_recursos" class="form-control">
+                                <option value="">Todos</option>
+                                <option value="1" <?= ($_GET["outros_recursos"] ?? "") === "1" ? "selected" : "" ?>>Sim</option>
+                                <option value="0" <?= ($_GET["outros_recursos"] ?? "") === "0" ? "selected" : "" ?>>Não</option>
+                            </select>
+                        </div>
+
+                    </div>
+
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="material-icons">search</i> Filtrar
+                        </button>
+                        <a href="user_dashboard.php" class="btn btn-secondary">
+                            <i class="material-icons">clear</i> Limpar Filtros
+                        </a>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Emendas Section -->
+            <section class="emendas-section">
+                <h2>
+                    <i class="material-icons">list</i> Emendas Disponíveis
+                </h2>
+                <div class="table-container">
+                    <table class="emendas-table">
+                        <thead>
+                            <tr>
+                                <th>Tipo de Emenda</th>
+                                <th>Eixo Temático</th>
+                                <th>Órgão</th>
+                                <th>Objeto de Intervenção Pública</th>
+                                <th>ODS</th>
+                                <th>Regionalização</th>
+                                <th>Unidade Orçamentária Federal</th>
+                                <th>Programa</th>
+                                <th>Ação</th>
+                                <th>Categoria Econômica</th>
+                                <th>Valor Pretendido</th>
+                                <th>Justificativa</th>
+                                <th>Data</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($emendas)): ?>
+                                <tr>
+                                    <td colspan="14" style="text-align: center; padding: 2rem;">
+                                        <i class="material-icons" style="font-size: 3rem; color: #ccc;">inbox</i>
+                                        <p>Nenhuma emenda encontrada com os filtros aplicados.</p>
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($emendas as $emenda): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($emenda["tipo_emenda"] ?? '-') ?></td>
+                                        <td><?= htmlspecialchars($emenda["eixo_tematico"] ?? '-') ?></td>
+                                        <td><?= htmlspecialchars($emenda["orgao"] ?? '-') ?></td>
+                                        <td class="description" title="<?= htmlspecialchars($emenda["objeto_intervencao"] ?? '-') ?>">
+                                            <?= htmlspecialchars(substr($emenda["objeto_intervencao"] ?? '-', 0, 120)) ?><?= strlen($emenda["objeto_intervencao"] ?? '') > 120 ? "..." : "" ?>
+                                        </td>
+                                        <td><?= htmlspecialchars($emenda["ods"] ?? "-") ?></td>
+                                        <td><?= htmlspecialchars($emenda["regionalizacao"] ?? "-") ?></td>
+                                        <td><?= htmlspecialchars($emenda["unidade_orcamentaria"] ?? "-") ?></td>
+                                        <td><?= htmlspecialchars($emenda["programa"] ?? "-") ?></td>
+                                        <td><?= htmlspecialchars($emenda["acao"] ?? "-") ?></td>
+                                        <td><?= htmlspecialchars($emenda["categoria_economica"] ?? "-") ?></td>
+                                        <td>R$ <?= isset($emenda["valor"]) ? number_format((float)$emenda["valor"], 2, ",", ".") : "-" ?></td>
+                                        <td class="description" title="<?= htmlspecialchars($emenda["justificativa"] ?? '') ?>">
+                                            <?= htmlspecialchars(substr($emenda["justificativa"] ?? '-', 0, 100)) ?><?= strlen($emenda["justificativa"] ?? '') > 100 ? "..." : "" ?>
+                                        </td>
+                                        <td><?= isset($emenda["criado_em"]) ? date('d/m/Y', strtotime($emenda["criado_em"])) : '-' ?></td>
+                                        <td>
+                                            <div class="action-buttons">
+                                                <a href="visualizar_emenda.php?id=<?= $emenda["id"] ?>" class="btn btn-primary btn-sm">
+                                                    <i class="material-icons">visibility</i> Ver
+                                                </a>
+
+                                                <?php if (in_array($emenda["id"], $user_emenda_ids)): ?>
+                                                    <form method="POST" style="display:inline;">
+                                                        <input type="hidden" name="emenda_id" value="<?= $emenda["id"] ?>">
+                                                        <input type="hidden" name="action" value="remove">
+                                                        <button type="submit" class="btn btn-danger btn-sm">
+                                                            <i class="material-icons">remove</i> Remover
+                                                        </button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <form method="POST" style="display:inline;">
+                                                        <input type="hidden" name="emenda_id" value="<?= $emenda["id"] ?>">
+                                                        <input type="hidden" name="action" value="add">
+                                                        <button type="submit" class="btn btn-success btn-sm">
+                                                            <i class="material-icons">add</i> Adicionar
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <?php if ($total_paginas > 1): ?>
+                    <div class="pagination">
+                        <?php if ($pagina_atual > 1): ?>
+                            <a href="?pagina=<?= $pagina_atual - 1 ?>&<?= http_build_query(array_filter($_GET, function($key) { return $key !== 'pagina'; }, ARRAY_FILTER_USE_KEY)) ?>">
+                                <i class="material-icons">chevron_left</i> Anterior
+                            </a>
+                        <?php endif; ?>
+
+                        <?php $start = max(1, $pagina_atual - 2); $end = min($total_paginas, $pagina_atual + 2); for ($i = $start; $i <= $end; $i++): ?>
+                            <?php if ($i == $pagina_atual): ?>
+                                <span class="current"><?= $i ?></span>
+                            <?php else: ?>
+                                <a href="?pagina=<?= $i ?>&<?= http_build_query(array_filter($_GET, function($key) { return $key !== 'pagina'; }, ARRAY_FILTER_USE_KEY)) ?>"> <?= $i ?> </a>
+                            <?php endif; ?>
+                        <?php endfor; ?>
+
+                        <?php if ($pagina_atual < $total_paginas): ?>
+                            <a href="?pagina=<?= $pagina_atual + 1 ?>&<?= http_build_query(array_filter($_GET, function($key) { return $key !== 'pagina'; }, ARRAY_FILTER_USE_KEY)) ?>"> Próxima <i class="material-icons">chevron_right</i> </a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+            </section>
+
+        </div>
+    </main>
+</div>
+
+<script>
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+}
+
+// Mostrar/ocultar filtro "Outros Recursos" baseado no tipo de caderno
+document.addEventListener('DOMContentLoaded', function() {
+    const tipoSelect = document.getElementById('tipo_caderno');
+    const outrosRecursosFilter = document.getElementById('outros_recursos_filter');
+    if (!tipoSelect) return;
+
+    function toggleOutros() {
+        const v = tipoSelect.value;
+        if (v === 'OPERAÇÃO DE CRÉDITO' || v === 'OUTROS RECURSOS') {
+            outrosRecursosFilter.style.display = 'block';
+        } else {
+            outrosRecursosFilter.style.display = 'none';
+            const sel = document.getElementById('outros_recursos');
+            if (sel) sel.value = '';
+        }
+    }
+
+    tipoSelect.addEventListener('change', toggleOutros);
+    // Inicial
+    toggleOutros();
+});
+
+// Fechar sidebar ao clicar fora (mobile)
+document.addEventListener('click', function(event) {
+    const sidebar = document.getElementById('sidebar');
+    const menuToggle = document.querySelector('.menu-toggle');
+    if (window.innerWidth <= 768 && sidebar && menuToggle && !sidebar.contains(event.target) && !menuToggle.contains(event.target) && sidebar.classList.contains('active')) {
+        toggleSidebar();
+    }
+});
+
+// Ajustar layout em redimensionamento
+window.addEventListener('resize', function() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (window.innerWidth > 768) {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+    }
+});
+</script>
 </body>
 </html>
