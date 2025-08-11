@@ -96,7 +96,7 @@ $pendentes_count = count($sugestoes_pendentes);
 // $pendentes_count = (int)$stmt_count->fetchColumn();
 
 
-// UI / HTML abaixo
+// Cores para tipos de usuários
 $user_colors = [
     'primary' => '#6f42c1',
     'secondary' => '#e83e8c',

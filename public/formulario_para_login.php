@@ -1,10 +1,7 @@
 <?php
 // sicef-caderno-de-emendas/formulario_para_login.php
-session_start();
-if (isset($_SESSION['user'])) {
-    header('Location: /index.php');
-    exit;
-}
+session_start(); // 
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">

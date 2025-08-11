@@ -1,5 +1,5 @@
 <?php
-// cicef-caderno-de-emendas/index.php
+// SICEF-caderno-de-emendas/index.php
 // Página de apresentação
 // Importa as configurações iniciais
 session_start();
@@ -8,7 +8,7 @@ session_start();
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8">
-  <title>CICEF - Caderno de Emendas Federais</title>
+  <title>SICEF - Caderno de Emendas Federais</title>
   <!-- Importa fontes do Google Fonts, ícones do Material Icons e estilos do Splide -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
@@ -498,10 +498,10 @@ session_start();
       <!-- Logotipo cabeçalho -->
       <div class="logo">
         <a href="apresentacao.php">
-          <img src="imagens/logo.png" alt="Logo CICEF">
+          <img src="imagens/logo.png" alt="Logo SICEF">
         </a>
         <div class="logo-text">
-          <!-- <h1>CICEF</h1> -->
+          <!-- <h1>SICEF</h1> -->
           <!-- <p>Caderno de Emendas Federais</p> -->
         </div>
       </div>
@@ -628,12 +628,12 @@ session_start();
         <div class="card">
           <!-- Imagem do cartão -->
           <div class="card-img">
-            <img src="imagens/sistema.jpg" alt="Sistema CICEF">
+            <img src="imagens/sistema.jpg" alt="Sistema SICEF">
           </div>
           <!-- Conteúdo do cartão -->
           <div class="card-content">
             <h3>Sobre o Sistema</h3>
-            <p>O CICEF é uma plataforma desenvolvida para centralizar e organizar as propostas de emendas parlamentares, proporcionando maior controle e transparência na alocação de recursos públicos.</p>
+            <p>O SICEF é uma plataforma desenvolvida para centralizar e organizar as propostas de emendas parlamentares, proporcionando maior controle e transparência na alocação de recursos públicos.</p>
           </div>
         </div>
       </div>
@@ -743,18 +743,18 @@ session_start();
     <div class="container">
       <!-- Logo -->
       <div class="footer-logo">
-        <img src="imagens/logo.png" alt="Logo CICEF">
+        <img src="imagens/logo.png" alt="Logo SICEF">
       </div>
       <!-- Informações de contato -->
       <div class="footer-info">
         <p>Secretaria de Estado de Economia</p>
         <p>Anexo do Palácio do Buriti, 5º andar, Brasília/DF</p>
         <p>CEP: 70075-900 | Telefone: (61) 3314-6213</p>
-        <p>E-mail: cicef@economia.gov.df.br</p>
+        <p>E-mail: SICEF@economia.gov.df.br</p>
       </div>
       <!-- Direitos autorais -->
       <div class="copyright">
-        <p>&copy; 2025 CICEF - Caderno de Emendas Federais. Todos os direitos reservados.</p>
+        <p>&copy; 2025 SICEF - Caderno de Emendas Federais. Todos os direitos reservados.</p>
       </div>
     </div>
   </footer>
