@@ -1,28 +1,34 @@
 <?php
+// user_dashboard.php
+// Painel do usuário com filtros, paginação, exportação e gerenciamento de "minhas emendas"
+// Inicialização da sessão e verificação de autenticação
 session_start();
-if (!isset($_SESSION["user"])) {
-    header("Location: ../login.php");
+if (!isset($_SESSION["user"])) {// Verifica se o usuário está autenticado
+    header("Location: ../login.php");// Redireciona para a página de login se o usuário não estiver autenticado
     exit;
 }
+
+// Inclui a configuração do banco de dados e autoload do Composer
 require_once __DIR__ . "/../../config/db.php";
 require_once __DIR__ . "/../../vendor/autoload.php";
 
+// Importa as classes necessárias do TCPDF e PhpSpreadsheet
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
+// Verifica se a classe TCPDF está disponível
 if (!class_exists("TCPDF")) {
-    die("TCPDF não está instalado. Por favor, instale via composer: composer require tecnickcom/tcpdf");
+    die("TCPDF não está instalado. Por favor, instale via composer: composer require tecnickcom/tcpdf");// Mensagem de erro se a biblioteca TCPDF não estiver instalada
 }
 
-/**
- * Exportação para Excel (colunas completas)
- */
+//Exportação para Excel (colunas completas). Verifica se a classe Spreadsheet está disponível
 function exportToExcel($data) {
-    $spreadsheet = new Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
+    $spreadsheet = new Spreadsheet();// Cria uma nova planilha, que será usada para armazenar os dados a serem exportados
+    $sheet = $spreadsheet->getActiveSheet();// Obtém a folha ativa, onde os dados serão escritos
 
     // Cabeçalhos
+    // $sheet->setCellValue() define os cabeçalhos das colunas na primeira linha da planilha
     $sheet->setCellValue('A1', 'Tipo')
         ->setCellValue('B1', 'Eixo Temático')
         ->setCellValue('C1', 'Órgão')
@@ -37,10 +43,10 @@ function exportToExcel($data) {
         ->setCellValue('L1', 'Justificativa')
         ->setCellValue('M1', 'Ano')
         ->setCellValue('N1', 'Data Criação');
+        // Dados
+    $row = 2;// Inicia a contagem de linhas a partir da segunda linha, já que a primeira é usada para os cabeçalhos
 
-    // Dados
-    $row = 2;
-    foreach ($data as $emenda) {
+    foreach ($data as $emenda) {// Itera sobre cada emenda nos dados fornecidos, escrevendo os valores nas células correspondentes
         $sheet->setCellValue('A'.$row, $emenda['tipo_emenda'] ?? '')
             ->setCellValue('B'.$row, $emenda['eixo_tematico'] ?? '')
             ->setCellValue('C'.$row, $emenda['orgao'] ?? '')
@@ -51,50 +57,49 @@ function exportToExcel($data) {
             ->setCellValue('H'.$row, $emenda['programa'] ?? '-')
             ->setCellValue('I'.$row, $emenda['acao'] ?? '-')
             ->setCellValue('J'.$row, $emenda['categoria_economica'] ?? '-')
-            ->setCellValue('K'.$row, is_numeric($emenda['valor']) ? (float)$emenda['valor'] : $emenda['valor'])
+            ->setCellValue('K'.$row, is_numeric($emenda['valor']) ? (float)$emenda['valor'] : $emenda['valor'])// Converte o valor para float se for numérico, caso contrário mantém o valor original
             ->setCellValue('L'.$row, $emenda['justificativa'] ?? '-')
-            ->setCellValue('M'.$row, isset($emenda['criado_em']) ? date('Y', strtotime($emenda['criado_em'])) : '-')
-            ->setCellValue('N'.$row, isset($emenda['criado_em']) ? date('d/m/Y H:i', strtotime($emenda['criado_em'])) : '-');
-        $row++;
+            ->setCellValue('M'.$row, isset($emenda['criado_em']) ? date('Y', strtotime($emenda['criado_em'])) : '-')// Extrai o ano da data de criação, se disponível, caso contrário usa '-'
+            ->setCellValue('N'.$row, isset($emenda['criado_em']) ? date('d/m/Y H:i', strtotime($emenda['criado_em'])) : '-');// Formata a data de criação para o formato dia/mês/ano hora:minuto, se disponível, caso contrário usa '-'
+        $row++;// Incrementa a linha para a próxima emenda, garantindo que cada emenda seja escrita em uma linha separada
     }
 
-    // Estilo/colunas
-    $sheet->getStyle('A1:N1')->getFont()->setBold(true);
-    foreach(range('A','N') as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
+    // Formatação, auto-ajuste de colunas, etc.
+    $sheet->getStyle('A1:N1')->getFont()->setBold(true);// Define o estilo da primeira linha (cabeçalhos) para negrito, destacando-os visualmente
+    foreach(range('A','N') as $col) {// Itera sobre as colunas de A a N para ajustar automaticamente a largura de cada coluna com base no conteúdo
+        $sheet->getColumnDimension($col)->setAutoSize(true);// Ajusta a largura da coluna para caber o conteúdo automaticamente
     }
 
-    // Download
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment;filename="relatorio_emendas.xlsx"');
-    header('Cache-Control: max-age=0');
-    $writer = new Xlsx($spreadsheet);
-    $writer->save('php://output');
-    exit;
+    // Envia o arquivo para download
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');// Define o tipo de conteúdo para arquivos Excel, garantindo que o navegador reconheça o formato corretamente
+    header('Content-Disposition: attachment;filename="relatorio_emendas.xlsx"');// Define o cabeçalho de disposição para anexar o arquivo com o nome especificado, sugerindo ao navegador que faça o download do arquivo
+    header('Cache-Control: max-age=0');// Define o controle de cache para evitar o armazenamento em cache do arquivo, garantindo que o usuário sempre receba a versão mais recente
+    $writer = new Xlsx($spreadsheet);// Cria um escritor para o formato XLSX, que será usado para salvar a planilha no formato Excel
+    $writer->save('php://output');// Salva a planilha diretamente na saída padrão (php://output), que é capturada pelo navegador para download
+    exit;// Encerra o script após o download para evitar qualquer saída adicional que possa corromper o arquivo
 }
 
-/**
- * Exportação para PDF (colunas completas)
- */
-function exportToPDF($data) {
-    $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
-    $pdf->SetCreator('Sistema CICEF');
-    $pdf->SetAuthor('Painel do Usuário');
-    $pdf->SetTitle('Relatório de Emendas');
-    $pdf->SetHeaderData('', 0, 'Relatório de Emendas', 'Gerado em ' . date('d/m/Y H:i'));
-    $pdf->setHeaderFont(Array(PDF_FONT_NAME_MAIN, '', PDF_FONT_SIZE_MAIN));
-    $pdf->setFooterFont(Array(PDF_FONT_NAME_DATA, '', PDF_FONT_SIZE_DATA));
-    $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
-    $pdf->SetMargins(PDF_MARGIN_LEFT, 15, PDF_MARGIN_RIGHT);
-    $pdf->SetHeaderMargin(PDF_MARGIN_HEADER);
-    $pdf->SetFooterMargin(PDF_MARGIN_FOOTER);
-    $pdf->SetAutoPageBreak(TRUE, PDF_MARGIN_BOTTOM);
-    $pdf->SetFont('helvetica', '', 8);
-    $pdf->AddPage();
+//Exportação para PDF (colunas resumidas). Verifica se a classe TCPDF está disponível
+function exportToPDF($data) {// Função para exportar os dados para um arquivo PDF
+    $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);// Cria uma nova instância do TCPDF com configurações padrão para orientação, unidade, formato, codificação e outras opções
+    $pdf->SetCreator('Sistema CICEF');// Define o criador do documento PDF, útil para identificação
+    $pdf->SetAuthor('Painel do Usuário');// Define o autor do documento PDF, útil para identificação
+    $pdf->SetTitle('Relatório de Emendas');// Define o título do documento PDF, que será exibido na barra de título do visualizador de PDF
+    $pdf->SetHeaderData('', 0, 'Relatório de Emendas', 'Gerado em ' . date('d/m/Y H:i'));// Define os dados do cabeçalho do PDF, incluindo o título e a data de geração
+    $pdf->setHeaderFont(Array(PDF_FONT_NAME_MAIN, '', PDF_FONT_SIZE_MAIN));// Define a fonte do cabeçalho do PDF, especificando o nome da fonte, estilo e tamanho.
+    $pdf->setFooterFont(Array(PDF_FONT_NAME_DATA, '', PDF_FONT_SIZE_DATA));// Define a fonte do rodapé do PDF, especificando o nome da fonte, estilo e tamanho.
+    $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);// Define a fonte monoespaçada padrão para o PDF, útil para exibir código ou texto que requer espaçamento uniforme
+    $pdf->SetMargins(PDF_MARGIN_LEFT, 15, PDF_MARGIN_RIGHT);// Define as margens do PDF, especificando as margens esquerda, superior e direita
+    $pdf->SetHeaderMargin(PDF_MARGIN_HEADER);// Define a margem do cabeçalho do PDF, especificando a distância entre o cabeçalho e o conteúdo principal
+    $pdf->SetFooterMargin(PDF_MARGIN_FOOTER);// Define a margem do rodapé do PDF, especificando a distância entre o rodapé e o conteúdo principal
+    $pdf->SetAutoPageBreak(TRUE, PDF_MARGIN_BOTTOM);// Habilita a quebra automática de página, garantindo que o conteúdo seja dividido corretamente entre as páginas, com uma margem inferior especificada
+    $pdf->SetFont('helvetica', '', 8);// Define a fonte padrão para o conteúdo do PDF, especificando o nome da fonte, estilo e tamanho
+    $pdf->AddPage();// Adiciona uma nova página ao documento PDF, onde o conteúdo será escrito
 
-    $html = '<h2>Relatório de Emendas</h2><table border="1" cellpadding="3">';
-    $html .= '<tr style="background-color:#007b5e;color:white;">'
-        . '<th>Tipo</th>'
+    // Conteúdo
+    $html = '<h2>Relatório de Emendas</h2><table border="1" cellpadding="3">';// Inicia a construção do conteúdo HTML para o PDF, começando com um título e uma tabela com borda e espaçamento entre células
+    $html .= '<tr style="background-color:#007b5e;color:white;">' // Adiciona uma linha de cabeçalho à tabela com estilo de fundo e cor do texto
+        . '<th>Tipo</th>'// . '<th>Tipo</th>' adiciona uma célula de cabeçalho para a coluna "Tipo"
         . '<th>Eixo</th>'
         . '<th>Órgão</th>'
         . '<th>Objeto</th>'
@@ -109,118 +114,123 @@ function exportToPDF($data) {
         . '<th>Data</th>'
         . '</tr>';
 
-    foreach ($data as $emenda) {
+    // Dados
+    foreach ($data as $emenda) {// Itera sobre cada emenda nos dados fornecidos, construindo uma linha da tabela para cada emenda
+        // Adiciona uma linha à tabela com os dados da emenda, utilizando htmlspecialchars para evitar problemas de segurança com caracteres especiais
         $html .= '<tr>'
-            . '<td>'.htmlspecialchars($emenda['tipo_emenda'] ?? '-').'</td>'
+            . '<td>'.htmlspecialchars($emenda['tipo_emenda'] ?? '-').'</td>'// Adiciona uma célula com o tipo de emenda, ou '-' se não estiver definido
             . '<td>'.htmlspecialchars($emenda['eixo_tematico'] ?? '-').'</td>'
             . '<td>'.htmlspecialchars($emenda['orgao'] ?? '-').'</td>'
-            . '<td>'.htmlspecialchars(substr($emenda['objeto_intervencao'] ?? '-', 0, 50)).'...</td>'
+            . '<td>'.htmlspecialchars(substr($emenda['objeto_intervencao'] ?? '-', 0, 50)).'...</td>'// Adiciona uma célula com o objeto de intervenção, truncando para os primeiros 50 caracteres e adicionando '...' se for mais longo
             . '<td>'.htmlspecialchars($emenda['ods'] ?? '-').'</td>'
             . '<td>'.htmlspecialchars($emenda['regionalizacao'] ?? '-').'</td>'
             . '<td>'.htmlspecialchars($emenda['unidade_orcamentaria'] ?? '-').'</td>'
             . '<td>'.htmlspecialchars($emenda['programa'] ?? '-').'</td>'
             . '<td>'.htmlspecialchars($emenda['acao'] ?? '-').'</td>'
             . '<td>'.htmlspecialchars($emenda['categoria_economica'] ?? '-').'</td>'
-            . '<td>'.(isset($emenda['valor']) ? number_format((float)$emenda['valor'], 2, ',', '.') : '-').'</td>'
-            . '<td>'.htmlspecialchars(substr($emenda['justificativa'] ?? '-', 0, 80)).'...</td>'
-            . '<td>'.(isset($emenda['criado_em']) ? date('d/m/Y', strtotime($emenda['criado_em'])) : '-').'</td>'
+            . '<td>'.(isset($emenda['valor']) ? number_format((float)$emenda['valor'], 2, ',', '.') : '-').'</td>' // Formata o valor como número com 2 casas decimais, vírgula como separador decimal e ponto como separador de milhares, ou '-' se não estiver definido
+            . '<td>'.htmlspecialchars(substr($emenda['justificativa'] ?? '-', 0, 80)).'...</td>'// Adiciona uma célula com a justificativa, truncando para os primeiros 80 caracteres e adicionando '...' se for mais longo
+            . '<td>'.(isset($emenda['criado_em']) ? date('d/m/Y', strtotime($emenda['criado_em'])) : '-').'</td>'// Formata a data de criação para o formato dia/mês/ano, ou '-' se não estiver definido
             . '</tr>';
     }
 
-    $html .= '</table>';
-    $pdf->writeHTML($html, true, false, true, false, '');
-    $pdf->Output('relatorio_emendas.pdf', 'D');
-    exit;
+    $html .= '</table>';// Fecha a tag da tabela, completando a construção do conteúdo HTML
+    $pdf->writeHTML($html, true, false, true, false, '');// Escreve o conteúdo HTML no documento PDF, convertendo-o para o formato PDF
+    $pdf->Output('relatorio_emendas.pdf', 'D');// Gera o arquivo PDF e força o download com o nome especificado
+    exit;// Encerra o script após o download para evitar qualquer saída adicional que possa corromper o arquivo
 }
 
-/* ----------------------------
-   Ações do usuário (add/remove)
-   ---------------------------- */
+// Variáveis iniciais, incluindo o ID do usuário, necessário para gerenciar "minhas emendas"
 $usuario_id = $_SESSION["user"]["id"];
 
-// Processar ações do usuário (adicionar/remover emenda às "minhas emendas")
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && isset($_POST["emenda_id"])) {
-    $emenda_id = $_POST["emenda_id"];
-    $action = $_POST["action"];
-    if ($action === "add") {
+// Processar ações do usuário (adicionar/remover emenda à "minhas emendas")
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && isset($_POST["emenda_id"])) {// Verifica se o método da requisição é POST e se os parâmetros necessários estão presentes
+    $emenda_id = $_POST["emenda_id"];// Obtém o ID da emenda a ser adicionada ou removida, que é enviado via formulário
+    $action = $_POST["action"];// Obtém a ação a ser realizada (adicionar ou remover), que é enviada via formulário
+
+     // Validação básica
+    if ($action === "add") {// Se a ação for "add", tenta adicionar a emenda às "minhas emendas"
+        // Tenta inserir a emenda na tabela usuario_emendas
         try {
-            $stmt = $pdo->prepare("INSERT INTO usuario_emendas (usuario_id, emenda_id) VALUES (?, ?)");
-            $stmt->execute([$usuario_id, $emenda_id]);
-            $_SESSION["message"] = "Emenda adicionada às suas emendas!";
-        } catch (PDOException $e) {
-            // Tratamento para chave duplicada (Postgres: 23505)
-            if ($e->getCode() == 23505 || strpos($e->getMessage(), 'Duplicate') !== false) {
-                $_SESSION["message"] = "Esta emenda já está nas suas emendas.";
-            } else {
+            $stmt = $pdo->prepare("INSERT INTO usuario_emendas (usuario_id, emenda_id) VALUES (?, ?)");// Prepara a consulta SQL para inserir a emenda na tabela usuario_emendas, associando o usuário à emenda
+            $stmt->execute([$usuario_id, $emenda_id]);// Executa a consulta com os parâmetros fornecidos (ID do usuário e ID da emenda)
+            $_SESSION["message"] = "Emenda adicionada às suas emendas!";// Define uma mensagem de sucesso na sessão para informar o usuário que a emenda foi adicionada com sucesso
+        } catch (PDOException $e) {// Captura qualquer exceção lançada durante a execução da consulta, como erros de banco de dados
+            // Verifica se o erro é devido a uma chave duplicada (emenda já adicionada), e define a mensagem de erro apropriada
+            if ($e->getCode() == 23505 || strpos($e->getMessage(), 'Duplicate') !== false) {// Código de erro para chave duplicada (23505 PostgreSQL)
+                $_SESSION["message"] = "Esta emenda já está nas suas emendas.";// Define uma mensagem de erro na sessão informando que a emenda já foi adicionada
+            } else {// Para outros erros, define uma mensagem genérica de erro com detalhes do erro
                 $_SESSION["message"] = "Erro ao adicionar emenda: " . $e->getMessage();
             }
         }
-    } elseif ($action === "remove") {
+    } elseif ($action === "remove") {// Se a ação for "remove", tenta remover a emenda das "minhas emendas"
+        // Tenta deletar a emenda da tabela usuario_emendas
         try {
-            $stmt = $pdo->prepare("DELETE FROM usuario_emendas WHERE usuario_id = ? AND emenda_id = ?");
-            $stmt->execute([$usuario_id, $emenda_id]);
-            $_SESSION["message"] = "Emenda removida das suas emendas!";
-        } catch (PDOException $e) {
-            $_SESSION["message"] = "Erro ao remover emenda: " . $e->getMessage();
+            $stmt = $pdo->prepare("DELETE FROM usuario_emendas WHERE usuario_id = ? AND emenda_id = ?");// Prepara a consulta SQL para deletar a emenda da tabela usuario_emendas, dissociando o usuário da emenda
+            $stmt->execute([$usuario_id, $emenda_id]);// Executa a consulta com os parâmetros fornecidos (ID do usuário e ID da emenda), removendo a associação
+            $_SESSION["message"] = "Emenda removida das suas emendas!";// Define uma mensagem de sucesso na sessão para informar o usuário que a emenda foi removida com sucesso
+        } catch (PDOException $e) {// Captura qualquer exceção lançada durante a execução da consulta, como erros de banco de dados
+            $_SESSION["message"] = "Erro ao remover emenda: " . $e->getMessage();// Define uma mensagem de erro na sessão com detalhes do erro ocorrido ao tentar remover a emenda
         }
     }
-    header("Location: user_dashboard.php");
-    exit;
+    header("Location: user_dashboard.php");// Redireciona de volta para o painel do usuário para evitar reenvio do formulário ao atualizar a página
+    exit;// Encerra o script após o redirecionamento
 }
 
-/* ----------------------------
-   Processar filtros
-   ---------------------------- */
-$where = [];
-$params = [];
+// Processar filtros
+$where = [];// Inicializa um array para armazenar as condições WHERE da consulta SQL
+$params = [];// Inicializa um array para armazenar os parâmetros correspondentes às condições WHERE
 
+// Aplica os filtros apenas se o método da requisição for GET
 if ($_SERVER["REQUEST_METHOD"] === "GET") {
-    if (!empty($_GET["tipo_caderno"])) {
-        $where[] = "tipo_emenda = ?";
-        $params[] = $_GET["tipo_caderno"];
+    // Adiciona condições ao array $where e parâmetros ao array $params com base nos filtros fornecidos via GET
+    if (!empty($_GET["tipo_caderno"])) {// Verifica se o filtro "tipo_caderno" foi fornecido e não está vazio
+        $where[] = "tipo_emenda = ?";// Adiciona a condição para o tipo de emenda ao array $where, usando um placeholder para o valor
+        $params[] = $_GET["tipo_caderno"];// Adiciona o valor do filtro ao array $params, que será usado na consulta preparada
     }
-    if (!empty($_GET["eixo_tematico"]) && $_GET["eixo_tematico"] !== "Selecione") {
-        $where[] = "eixo_tematico = ?";
-        $params[] = $_GET["eixo_tematico"];
+    // Adiciona outros filtros conforme necessário, seguindo o mesmo padrão, verificando se o valor foi fornecido e não está vazio
+    if (!empty($_GET["eixo_tematico"]) && $_GET["eixo_tematico"] !== "Selecione") {// Verifica se o filtro "eixo_tematico" foi fornecido, não está vazio e não é igual a "Selecione"
+        $where[] = "eixo_tematico = ?";// Adiciona a condição para o eixo temático ao array $where, usando um placeholder para o valor
+        $params[] = $_GET["eixo_tematico"];// Adiciona o valor do filtro ao array $params, que será usado na consulta preparada
     }
-    if (!empty($_GET["unidade_responsavel"]) && $_GET["unidade_responsavel"] !== "Selecione") {
+    if (!empty($_GET["unidade_responsavel"]) && $_GET["unidade_responsavel"] !== "Selecione") {// Verifica se o filtro "unidade_responsavel" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "orgao = ?";
         $params[] = $_GET["unidade_responsavel"];
     }
-    if (!empty($_GET["ods"]) && $_GET["ods"] !== "Selecione") {
+    if (!empty($_GET["ods"]) && $_GET["ods"] !== "Selecione") {// Verifica se o filtro "ods" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "ods = ?";
         $params[] = $_GET["ods"];
     }
-    if (!empty($_GET["regionalizacao"]) && $_GET["regionalizacao"] !== "Selecione") {
+    if (!empty($_GET["regionalizacao"]) && $_GET["regionalizacao"] !== "Selecione") {// Verifica se o filtro "regionalizacao" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "regionalizacao = ?";
         $params[] = $_GET["regionalizacao"];
     }
-    if (!empty($_GET["unidade_orcamentaria"]) && $_GET["unidade_orcamentaria"] !== "Selecione") {
+    if (!empty($_GET["unidade_orcamentaria"]) && $_GET["unidade_orcamentaria"] !== "Selecione") {// Verifica se o filtro "unidade_orcamentaria" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "unidade_orcamentaria = ?";
         $params[] = $_GET["unidade_orcamentaria"];
     }
-    if (!empty($_GET["programa"]) && $_GET["programa"] !== "Selecione") {
+    if (!empty($_GET["programa"]) && $_GET["programa"] !== "Selecione") {// Verifica se o filtro "programa" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "programa = ?";
         $params[] = $_GET["programa"];
     }
-    if (!empty($_GET["acao"]) && $_GET["acao"] !== "Selecione") {
+    if (!empty($_GET["acao"]) && $_GET["acao"] !== "Selecione") {// Verifica se o filtro "acao" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "acao = ?";
         $params[] = $_GET["acao"];
     }
-    if (!empty($_GET["categoria_economica"]) && $_GET["categoria_economica"] !== "Selecione") {
+    if (!empty($_GET["categoria_economica"]) && $_GET["categoria_economica"] !== "Selecione") {// Verifica se o filtro "categoria_economica" foi fornecido, não está vazio e não é igual a "Selecione"
         $where[] = "categoria_economica = ?";
         $params[] = $_GET["categoria_economica"];
     }
-    if (!empty($_GET["valor_de"])) {
-        $where[] = "valor >= ?";
+    if (!empty($_GET["valor_de"])) {// Verifica se o filtro "valor_de" foi fornecido e não está vazio, permitindo filtrar valores maiores ou iguais, inclusive zero, se desejado, mas não nulo
+        $where[] = "valor >= ?";// Adiciona a condição para o valor mínimo ao array $where, usando um placeholder para o valor
         $params[] = $_GET["valor_de"];
     }
-    if (!empty($_GET["valor_ate"])) {
+    if (!empty($_GET["valor_ate"])) {// Verifica se o filtro "valor_ate" foi fornecido e não está vazio, permitindo filtrar valores menores ou iguais, inclusive zero, se desejado, mas não nulo
         $where[] = "valor <= ?";
         $params[] = $_GET["valor_ate"];
     }
-    if (!empty($_GET["ano_projeto"])) {
-        $where[] = "EXTRACT(YEAR FROM criado_em) = ?";
+    if (!empty($_GET["ano_projeto"])) {// Verifica se o filtro "ano_projeto" foi fornecido e não está vazio
+        $where[] = "EXTRACT(YEAR FROM criado_em) = ?";// Adiciona a condição para o ano do projeto ao array $where, usando a função EXTRACT para obter o ano da data de criação
         $params[] = $_GET["ano_projeto"];
     }
 
@@ -230,62 +240,60 @@ if ($_SERVER["REQUEST_METHOD"] === "GET") {
         $params[] = (int)$_GET["outros_recursos"];
     }
 
-    // Processar exportação
-    if (isset($_GET["export"])) {
-        $export_type = $_GET["export"];
+    // Processar Exportação
+    if (isset($_GET["export"])) {// Verifica se o parâmetro "export" foi fornecido na requisição GET, indicando que o usuário deseja exportar os dados
+        $export_type = $_GET["export"];// Obtém o tipo de exportação solicitado (excel ou pdf) a partir do parâmetro "export"
+        // Constroi a consulta SQL completa com as condições WHERE aplicadas, se houver, e ordena os resultados pela data de criação em ordem decrescente
         $sql = "SELECT * FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "") . " ORDER BY criado_em DESC";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        if ($export_type === "excel") {
-            exportToExcel($emendas);
-        } elseif ($export_type === "pdf") {
-            exportToPDF($emendas);
+        $stmt = $pdo->prepare($sql);// Prepara a consulta SQL para execução, utilizando a conexão PDO
+        $stmt->execute($params);// Executa a consulta com os parâmetros fornecidos, que substituem os placeholders na consulta preparada
+        $emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);// Busca todos os resultados da consulta como um array associativo
+        if ($export_type === "excel") {// Se o tipo de exportação for "excel", chama a função para exportar os dados para Excel
+            exportToExcel($emendas);// Chama a função para exportar os dados para Excel, passando os dados das emendas como argumento
+        } elseif ($export_type === "pdf") {// Se o tipo de exportação for "pdf", chama a função para exportar os dados para PDF
+            exportToPDF($emendas);// Chama a função para exportar os dados para PDF, passando os dados das emendas como argumento
         }
         exit;
     }
 }
 
-/* ----------------------------
-   Paginação & Consulta
-   ---------------------------- */
-$itens_por_pagina = 10;
-$pagina_atual = isset($_GET['pagina']) ? max(1, (int)$_GET['pagina']) : 1;
-$offset = ($pagina_atual - 1) * $itens_por_pagina;
+// Paginação e consulta
+$itens_por_pagina = 10;// Define o número de itens a serem exibidos por página
+$pagina_atual = isset($_GET['pagina']) ? max(1, (int)$_GET['pagina']) : 1;// Obtém a página atual a partir do parâmetro GET, garantindo que seja pelo menos 1
+$offset = ($pagina_atual - 1) * $itens_por_pagina;// Calcula o offset para a consulta SQL com base na página atual e no número de itens por página
 
-// total
-$sql_count = "SELECT COUNT(*) as total FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "");
-$stmt_count = $pdo->prepare($sql_count);
-$stmt_count->execute($params);
-$total_emendas = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
-$total_paginas = ($total_emendas > 0) ? (int)ceil($total_emendas / $itens_por_pagina) : 1;
+// Contagem total de emendas para paginação
+$sql_count = "SELECT COUNT(*) as total FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "");// Constroi a consulta SQL para contar o total de emendas, aplicando as mesmas condições WHERE usadas na consulta principal
+$stmt_count = $pdo->prepare($sql_count); // Prepara a consulta SQL para execução
+$stmt_count->execute($params); // Executa a consulta com os parâmetros fornecidos, que substituem os placeholders na consulta preparada
+$total_emendas = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];// Busca o total de emendas a partir do resultado da consulta
+$total_paginas = ($total_emendas > 0) ? (int)ceil($total_emendas / $itens_por_pagina) : 1;// Calcula o total de páginas com base no total de emendas e no número de itens por página, garantindo que seja pelo menos 1
 
-// query principal
+// Consulta principal com filtros e paginação
+// Constroi a consulta SQL completa com as condições WHERE aplicadas, se houver, ordena os resultados pela data de criação em ordem decrescente, e aplica o limite e offset para paginação
 $sql = "SELECT * FROM emendas" . (!empty($where) ? " WHERE " . implode(" AND ", $where) : "") . " ORDER BY criado_em DESC LIMIT :limit OFFSET :offset";
-$stmt = $pdo->prepare($sql);
-if (!empty($params)) {
-    foreach ($params as $key => $value) {
-        $stmt->bindValue($key + 1, $value);
+$stmt = $pdo->prepare($sql);// Prepara a consulta SQL para execução, utilizando a conexão PDO
+// Vincula os valores dos parâmetros para a consulta preparada, incluindo os filtros e os parâmetros de paginação
+if (!empty($params)) {// Verifica se há parâmetros para vincular (filtros aplicados)
+    foreach ($params as $key => $value) {// Itera sobre cada parâmetro, vinculando-o ao placeholder correspondente na consulta preparada
+        $stmt->bindValue($key + 1, $value);// +1 porque os placeholders começam em 1, não em 0
     }
 }
-$stmt->bindValue(':limit', $itens_por_pagina, PDO::PARAM_INT);
-$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-$stmt->execute();
-$emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt->bindValue(':limit', $itens_por_pagina, PDO::PARAM_INT);// Vincula o valor do limite para a consulta preparada, garantindo que seja tratado como um inteiro
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);// Vincula o valor do offset para a consulta preparada, garantindo que seja tratado como um inteiro
+$stmt->execute();// Executa a consulta com os parâmetros vinculados
+$emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);// Busca todos os resultados da consulta como um array associativo
 
 // emendas do usuário (para mostrar botão add/remove)
-$stmt_user_emendas = $pdo->prepare("SELECT emenda_id FROM usuario_emendas WHERE usuario_id = ?");
-$stmt_user_emendas->execute([$usuario_id]);
-$user_emenda_ids = $stmt_user_emendas->fetchAll(PDO::FETCH_COLUMN);
+$stmt_user_emendas = $pdo->prepare("SELECT emenda_id FROM usuario_emendas WHERE usuario_id = ?");// Prepara a consulta SQL para buscar os IDs das emendas associadas ao usuário atual
+$stmt_user_emendas->execute([$usuario_id]);// Executa a consulta com o ID do usuário atual como parâmetro
+$user_emenda_ids = $stmt_user_emendas->fetchAll(PDO::FETCH_COLUMN);// Busca todos os IDs das emendas como um array simples, que será usado para determinar se uma emenda está nas "minhas emendas"
 
-/* ----------------------------
-   Valores distintos para filtros
-   ---------------------------- */
-// Adicionei "OUTROS RECURSOS" aqui também
-$tipos_emenda = ['EMENDA PARLAMENTAR FEDERAL', 'OPERAÇÃO DE CRÉDITO', 'OUTROS RECURSOS'];
-$eixos_tematicos = $pdo->query("SELECT DISTINCT eixo_tematico FROM emendas ORDER BY eixo_tematico")->fetchAll(PDO::FETCH_COLUMN);
-$unidades = $pdo->query("SELECT DISTINCT orgao FROM emendas ORDER BY orgao")->fetchAll(PDO::FETCH_COLUMN);
-$ods_values = $pdo->query("SELECT DISTINCT ods FROM emendas ORDER BY ods")->fetchAll(PDO::FETCH_COLUMN);
+// Dados para filtros (valores distintos nas colunas relevantes)
+$tipos_emenda = ['EMENDA PARLAMENTAR FEDERAL', 'OPERAÇÃO DE CRÉDITO', 'OUTROS RECURSOS'];// Define os tipos de emenda disponíveis para o filtro, que são fixos e conhecidos
+$eixos_tematicos = $pdo->query("SELECT DISTINCT eixo_tematico FROM emendas ORDER BY eixo_tematico")->fetchAll(PDO::FETCH_COLUMN);// Busca os valores distintos de eixo temático na tabela emendas, ordenados alfabeticamente, para popular o filtro
+$unidades = $pdo->query("SELECT DISTINCT orgao FROM emendas ORDER BY orgao")->fetchAll(PDO::FETCH_COLUMN);// Busca os valores distintos de órgão na tabela emendas, ordenados alfabeticamente, para popular o filtro
+$ods_values = $pdo->query("SELECT DISTINCT ods FROM emendas ORDER BY ods")->fetchAll(PDO::FETCH_COLUMN); // Busca os valores distintos de ods na tabela emendas, ordenados alfabeticamente, para popular o filtro
 $regionalizacoes = $pdo->query("SELECT DISTINCT regionalizacao FROM emendas ORDER BY regionalizacao")->fetchAll(PDO::FETCH_COLUMN);
 $unidades_orcamentarias = $pdo->query("SELECT DISTINCT unidade_orcamentaria FROM emendas ORDER BY unidade_orcamentaria")->fetchAll(PDO::FETCH_COLUMN);
 $programas = $pdo->query("SELECT DISTINCT programa FROM emendas ORDER BY programa")->fetchAll(PDO::FETCH_COLUMN);
@@ -293,31 +301,30 @@ $acoes = $pdo->query("SELECT DISTINCT acao FROM emendas ORDER BY acao")->fetchAl
 $categorias_economicas = $pdo->query("SELECT DISTINCT categoria_economica FROM emendas ORDER BY categoria_economica")->fetchAll(PDO::FETCH_COLUMN);
 $anos = $pdo->query("SELECT DISTINCT EXTRACT(YEAR FROM criado_em) as ano FROM emendas ORDER BY ano DESC")->fetchAll(PDO::FETCH_COLUMN);
 
-/* ----------------------------
-   Cores / UI
-   ---------------------------- */
+// Cores para tipos de usuários
 $user_colors = [
     'primary' => '#007b5e',
     'secondary' => '#4db6ac',
     'accent' => '#ffc107'
 ];
-if (isset($_SESSION["user"]["tipo"])) {
+
+if (isset($_SESSION["user"]["tipo"])) {// verifica a se o usuário está autenticado na sessão e o tipo
     switch ($_SESSION["user"]["tipo"]) {
-        case 'Deputado':
+        case 'Deputado': // Caso o usuário seja Deputado, exibe as cores abaixo
             $user_colors = [
                 'primary' => '#018bd2',
                 'secondary' => '#51ae32',
                 'accent' => '#fdfefe'
             ];
             break;
-        case 'Senador':
+        case 'Senador': // Caso o usuário seja Senador, exibe as cores abaixo
             $user_colors = [
                 'primary' => '#51b949',
                 'secondary' => '#0094db',
                 'accent' => '#fefefe'
             ];
             break;
-        case 'Administrador':
+        case 'Administrador': // Caso o usuário seja Administrador, exibe as cores abaixo
             $user_colors = [
                 'primary' => '#6f42c1',
                 'secondary' => '#e83e8c',
@@ -332,17 +339,53 @@ if (isset($_SESSION["user"]["tipo"])) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Painel do Usuário - CICEF</title>
+<title>Painel do Usuário - SICEF</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
-:root { --primary-color: <?= $user_colors['primary'] ?>; --secondary-color: <?= $user_colors['secondary'] ?>; --accent-color: <?= $user_colors['accent'] ?>; --dark-color: #2c3e50; --light-color: #f8f9fa; --border-color: #e0e0e0; --error-color: #e74c3c; --success-color: #2ecc71; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333; line-height: 1.6; overflow-x: hidden; }
-.user-container { display: flex; min-height: 100vh; }
+/* Definindo variáveis para as cores */
+:root { 
+    --primary-color: <?= $user_colors['primary'] ?>; 
+    --secondary-color: <?= $user_colors['secondary'] ?>; 
+    --accent-color: <?= $user_colors['accent'] ?>; 
+    --dark-color: #2c3e50; 
+    --light-color: #f8f9fa; 
+    --border-color: #e0e0e0; 
+    --error-color: #e74c3c; 
+    --success-color: #2ecc71; 
+    }
+* { 
+    margin: 0; 
+    padding: 0; 
+    box-sizing: border-box; 
+}
+body { 
+    font-family: 'Roboto', sans-serif; /** Define fonte padrão para o corpo da página */
+    background-color: #f5f7fa; color: #333; 
+    line-height: 1.6; overflow-x: hidden;
+}
+.user-container { 
+    display: flex; 
+    min-height: 100vh; 
+}
+
 /* Sidebar */
-.user-sidebar { width: 250px; background-color: var(--dark-color); color: white; padding: 1.5rem 0; position: fixed; height: 100vh; transition: all 0.3s; z-index: 100; overflow-y: auto; }
-.sidebar-header { padding: 0 1.5rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.user-sidebar { 
+    width: 250px; 
+    background-color: var(--dark-color); 
+    color: white; 
+    padding: 1.5rem 0; 
+    position: fixed; 
+    height: 100vh; 
+    transition: all 0.3s; 
+    z-index: 100; 
+    overflow-y: auto; 
+}
+.sidebar-header { 
+    padding: 0 1.5rem 1.5rem; 
+    border-bottom: 1px solid rgba(255,255,255,0.1); 
+}
+
 .sidebar-header h2 { font-size: 1.25rem; display: flex; align-items: center; gap: 0.75rem; }
 .sidebar-menu { padding: 1rem 0; }
 .sidebar-menu a { display: flex; align-items: center; padding: 0.75rem 1.5rem; color: rgba(255,255,255,0.8); text-decoration: none; transition: all 0.3s; gap: 0.75rem; }
@@ -402,7 +445,7 @@ body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333
 .message { padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
 .message-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
 .message-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-/* Mobile Responsiveness */
+/* Responsividade para dispositivos movéis */
 @media (max-width: 768px) {
   .user-sidebar { transform: translateX(-100%); }
   .user-sidebar.active { transform: translateX(0); }
@@ -423,7 +466,7 @@ body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333
   .emendas-table { min-width: 600px; }
   .emendas-table th, .emendas-table td { padding: 0.5rem; font-size: 0.875rem; }
 }
-/* Overlay para mobile */
+/* Overlay para dispositivo movel */
 .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 99; }
 .sidebar-overlay.active { display: block; }
 </style>
@@ -444,7 +487,6 @@ body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333
             <a href="minhas_emendas.php">
                 <i class="material-icons">star</i> Minhas Emendas
             </a>
-            <!-- lateral "Outros Recursos" removido conforme solicitado -->
         </div>
     </nav>
 
@@ -654,7 +696,7 @@ body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333
                 </form>
             </section>
 
-            <!-- Emendas Section -->
+            <!-- Sessão para Emendas -->
             <section class="emendas-section">
                 <h2>
                     <i class="material-icons">list</i> Emendas Disponíveis
@@ -739,7 +781,7 @@ body { font-family: 'Roboto', sans-serif; background-color: #f5f7fa; color: #333
                     </table>
                 </div>
 
-                <!-- Pagination -->
+                <!-- Paginação -->
                 <?php if ($total_paginas > 1): ?>
                     <div class="pagination">
                         <?php if ($pagina_atual > 1): ?>

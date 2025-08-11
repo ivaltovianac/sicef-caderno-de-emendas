@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <img src="logo.png" alt="Logo SISEF"> SISEF
         </div>
         <nav>
-            <a href="apresentacao.php">Sobre</a>
+            <a href="apresentacao.php">Início</a>
             <a href="mailto:gab.sucap@economia.gov.df.br">Contato</a>
             <a href="formulario_para_login.php">Voltar</a>
         </nav>

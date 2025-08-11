@@ -208,7 +208,7 @@ if (isset($_SESSION['user'])) {
             </a>
         </div>
         <nav>
-            <a href="apresentacao.php"><span class="material-icons">info</span> Sobre</a>
+            <a href="apresentacao.php"><span class="material-icons">info</span> Início</a>
             <a href="mailto:gab.sucap@economia.gov.df.br"><span class="material-icons">email</span> Contato</a>
         </nav>
     </header>
