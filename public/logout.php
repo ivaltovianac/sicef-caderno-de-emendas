@@ -1,36 +1,21 @@
+
 <?php
-/**
- * Logout do usuário - SICEF
- *
- * Este arquivo é responsável por encerrar a sessão do usuário no sistema.
- * Ele destrói todas as variáveis de sessão, apaga o cookie de sessão e redireciona para a página inicial.
- *
- * Funcionalidades:
- * - Destruição da sessão
- * - Limpeza do cookie de sessão
- * - Redirecionamento para a página de apresentação
- *
- * @package SICEF
- * @author Equipe SICEF
- * @version 1.0
- */
+// SICEF-caderno-de-emendas/public/logout.php
+session_start();
 
-// Inicia a sessão para manipulação dos dados do usuário
-session_start(); 
-
-// Limpa todas as variáveis da sessão para garantir que não restem dados
+// Destruir todas as variáveis de sessão
 $_SESSION = array();
 
-// Verifica se a sessão utiliza cookies para também removê-los
+// Se desejar destruir a sessão completamente, apague também o cookie de sessão
 if (ini_get("session.use_cookies")) {
-    $params = session_get_cookie_params(); 
+    $params = session_get_cookie_params();
     setcookie(session_name(), '', time() - 42000,
-    $params["path"], $params["domain"],
-    $params["secure"], $params["httponly"]
+        $params["path"], $params["domain"],
+        $params["secure"], $params["httponly"]
     );
 }
 
-// Destrói a sessão completamente
+// Finalmente, destruir a sessão
 session_destroy();
 
 // Redirecionar para a página de apresentação

@@ -1,6 +1,18 @@
 
 <?php
-// sicef-caderno-de-emendas/con:$_ENV['APP_ENV'] ?? getenv('APP_ENV') ?: 'development';
+// sicef-caderno-de-emendas/config/db.php
+// Configurações de conexão com o banco de dados PostgreSQL
+
+// Configurações do banco de dados
+$config = [
+    'host' => $_ENV['DB_HOST'] ?? getenv('DB_HOST') ?: 'localhost',
+    'db'   => $_ENV['DB_NAME'] ?? getenv('DB_NAME') ?: 'caderno_emendas',
+    'user' => $_ENV['DB_USER'] ?? getenv('DB_USER') ?: 'sucap_admin',
+    'pass' => $_ENV['DB_PASS'] ?? getenv('DB_PASS') ?: 'nova_senha',
+    'port' => $_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: '5432',
+];
+
+$appEnv = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?: 'development';
 
 try {
     // Removido "charset" do DSN (não suportado em PDO pgsql)

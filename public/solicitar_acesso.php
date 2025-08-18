@@ -1,63 +1,32 @@
 <?php
-/**
- * Solicitar Acesso - SICEF
- *
- * Este arquivo permite que parlamentares (deputados e senadores) solicitem acesso ao sistema.
- * Ele valida os dados do formulário, verifica se já existe uma solicitação para o email informado,
- * insere uma nova solicitação no banco de dados e exibe mensagens de sucesso ou erro.
- *
- * Funcionalidades:
- * - Validação dos campos do formulário
- * - Verificação de email válido
- * - Verificação de tipo de usuário permitido
- * - Prevenção de solicitações duplicadas
- * - Inserção de nova solicitação no banco
- * - Exibição de mensagens de feedback
- *
- * @package SICEF
- * @author Equipe SICEF
- * @version 1.0
- */
-
-// Inicia a sessão para armazenar mensagens e dados do usuário
+// SICEF-caderno-de-emendas/public/solicitar_acesso.php
 session_start();
-
-// Inclui arquivo para conexão com banco de dados
 require_once __DIR__ . "/../config/db.php";
 
-// Inicializa variáveis para mensagens de feedback
 $message = "";
 $error = "";
 
-// Verifica se o formulário foi enviado via POST
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    // Obtém e limpa os dados do formulário
     $nome = trim($_POST["nome"] ?? "");
     $email = trim($_POST["email"] ?? "");
     $tipo = $_POST["tipo"] ?? "";
 
-    // Valida os campos obrigatórios
     if (empty($nome) || empty($email) || empty($tipo)) {
         $error = "Por favor, preencha todos os campos.";
-    }
-    // Valida o formato do email
-    elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Por favor, digite um e-mail válido.";
-    }
-    // Valida o tipo de usuário (deputado ou senador)
-    elseif (!in_array($tipo, ["deputado", "senador"])) {
+    } elseif (!in_array($tipo, ["deputado", "senador"])) {
         $error = "Tipo de usuário inválido.";
     } else {
         try {
-            // Verifica se já existe uma solicitação para o email informado
+            // Verifica se já existe solicitação para o e-mail
             $stmt = $pdo->prepare("SELECT id FROM solicitacoes_acesso WHERE email = ?");
             $stmt->execute([$email]);
 
             if ($stmt->fetch()) {
-                // Se já existe, define mensagem de erro
                 $error = "Já existe uma solicitação para este e-mail.";
             } else {
-                // Insere nova solicitação com status 'pendente' e data atual
+                // Insere a nova solicitação
                 $stmt = $pdo->prepare("INSERT INTO solicitacoes_acesso (nome, email, tipo, status, data_solicitacao) VALUES (?, ?, ?, 'pendente', NOW())");
 
                 if ($stmt->execute([$nome, $email, $tipo])) {
@@ -67,7 +36,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 }
             }
         } catch (PDOException $e) {
-            // Registra erro no log do servidor e exibe mensagem
             error_log("Erro na solicitação de acesso: " . $e->getMessage());
             $error = "Erro interno do servidor. Tente novamente.";
         }
@@ -81,12 +49,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Solicitar Acesso - SICEF</title>
-    <!-- Inclusão de CSS e fontes externas para estilo e ícones -->
+    <!-- Bootstrap CSS, Google Fonts and Material Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet" />
     <style>
-        /* Definição de variáveis de cores para identidade visual */
         :root {
             --primary-color: #00796B;
             --secondary-color: #009688;
@@ -95,7 +62,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             --dark-color: #263238;
         }
 
-        /* Estilização geral do corpo da página */
         body {
             font-family: 'Poppins', sans-serif;
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
@@ -105,7 +71,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin: 0;
         }
 
-        /* Estilização do cabeçalho */
+        /* Estilo header */
         header {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
@@ -113,14 +79,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
-        /* Container centralizado com largura máxima */
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
         }
 
-        /* Layout flexível para conteúdo do cabeçalho */
         .header-content {
             display: flex;
             justify-content: space-between;
@@ -128,7 +92,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             flex-wrap: wrap;
         }
 
-        /* Estilização da logo */
         .logo {
             display: flex;
             align-items: center;
@@ -139,7 +102,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-right: 15px;
         }
 
-        /* Menu de navegação */
         .nav-menu {
             display: flex;
             gap: 1rem;
@@ -177,7 +139,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transform: translateY(-2px);
         }
 
-        /* Responsividade para telas menores */
         @media (max-width: 768px) {
             .header-content {
                 flex-direction: column;
@@ -190,7 +151,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             }
         }
 
-        /* Área principal para centralizar o formulário */
+        /* Main content area to center the form */
         .main-content {
             flex: 1;
             display: flex;
@@ -199,7 +160,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 20px;
         }
 
-        /* Container do formulário de solicitação */
         .access-container {
             background: white;
             border-radius: 15px;
@@ -209,7 +169,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             overflow: hidden;
         }
 
-        /* Cabeçalho do formulário */
         .access-header {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
@@ -227,12 +186,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             opacity: 0.9;
         }
 
-        /* Corpo do formulário */
         .access-body {
             padding: 2rem;
         }
 
-        /* Botão primário do formulário */
         .access-body .btn-primary {
             background: var(--primary-color) !important;
             border: none;
@@ -249,12 +206,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transform: translateY(-2px);
         }
 
-        /* Espaçamento entre grupos de formulário */
         .form-group {
             margin-bottom: 1.5rem;
         }
 
-        /* Rodapé do formulário */
         .access-footer {
             display: flex;
             flex-direction: column;
@@ -271,14 +226,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             font-weight: 500;
         }
 
-        /* Estilização dos rótulos */
         .form-label {
             font-weight: 500;
             color: var(--dark-color);
             margin-bottom: 0.5rem;
         }
 
-        /* Estilização dos campos de formulário */
         .form-control,
         .form-select {
             border: 2px solid #e0e0e0;
@@ -288,20 +241,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transition: border-color 0.3s;
         }
 
-        /* Efeito de foco nos campos */
         .form-control:focus,
         .form-select:focus {
             border-color: var(--primary-color);
             box-shadow: 0 0 0 0.2rem rgba(0, 121, 107, 0.25);
         }
 
-        /* Estilização dos alertas */
+        .btn-primary {
+            background: linear-gradient(13deg, var(--accent-color));
+            border: none;
+            border-radius: 10px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            width: 100%;
+            transition: transform 0.3s;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #006157, #00796B);
+        }
+
         .alert {
             border-radius: 10px;
             border: none;
         }
 
-        /* Estilização do rodapé */
+        /* Footer styles */
         footer {
             background: var(--dark-color);
             color: white;
@@ -309,7 +276,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-top: auto;
         }
 
-        /* Conteúdo do rodapé com grid responsivo */
         .footer-content {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -319,7 +285,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 0 20px;
         }
 
-        /* Seções do rodapé */
         .footer-section h3 {
             color: var(--accent-color);
             margin-bottom: 1rem;
@@ -337,7 +302,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--accent-color);
         }
 
-        /* Rodapé inferior */
         .footer-bottom {
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             padding-top: 1rem;
@@ -349,7 +313,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding-right: 20px;
         }
 
-        /* Responsividade para telas pequenas */
+        /* Responsividade */
         @media (max-width: 480px) {
             .access-container {
                 margin: 10px;
@@ -364,39 +328,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 </head>
 
 <body>
-    <!-- Cabeçalho da página -->
+    <!-- Header -->
     <header>
         <div class="container">
             <div class="header-content">
                 <div class="logo">
-                    <!-- Logo com link para página inicial -->
                     <a href="apresentacao.php"><img src="imagens/logo.svg" alt="SICEF Logo" /></a>
                 </div>
-                <!-- Menu de navegação -->
                 <nav class="nav-menu">
                     <a href="apresentacao.php">Início</a>
                     <a href="#contato">Contatos</a>
                     <a href="login.php" class="btn btn-primary">
-                        <span class="material-icons">login</span>
-                        Entrar
-                    </a>
+                    <span class="material-icons">login</span>
+                    Entrar</a>
                 </nav>
             </div>
         </div>
     </header>
 
-    <!-- Conteúdo principal -->
+    <!-- Main content -->
     <div class="main-content">
         <div class="access-container">
-            <!-- Cabeçalho do formulário -->
             <div class="access-header">
                 <h2><span class="material-icons me-2">person_add</span>Solicitar Acesso</h2>
                 <p>Preencha os dados para solicitar acesso ao sistema</p>
             </div>
 
-            <!-- Corpo do formulário -->
             <div class="access-body">
-                <!-- Mensagem de sucesso -->
                 <?php if (!empty($message)): ?>
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         <span class="material-icons me-2">check_circle</span>
@@ -405,7 +363,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </div>
                 <?php endif; ?>
 
-                <!-- Mensagem de erro -->
                 <?php if (!empty($error)): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <span class="material-icons me-2">error</span>
@@ -414,7 +371,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </div>
                 <?php endif; ?>
 
-                <!-- Informações importantes para o usuário -->
                 <div class="info-box">
                     <h6><span class="material-icons me-1">info</span>Informações Importantes</h6>
                     <p>• Apenas deputados e senadores podem solicitar acesso</p>
@@ -422,7 +378,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     <p>• Você receberá um e-mail com a resposta em até 48 horas</p>
                 </div>
 
-                <!-- Formulário de solicitação de acesso -->
                 <form method="POST">
                     <div class="form-group">
                         <label for="nome" class="form-label">
@@ -464,7 +419,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 </form>
             </div>
 
-            <!-- Rodapé do formulário com link para voltar ao login -->
             <div class="access-footer">
                 <div class="mb-2">
                     <a href="formulario_para_login.php">
@@ -476,7 +430,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
     </div>
 
-    <!-- Rodapé da página com informações de contato e links -->
+    <!-- Footer -->
     <footer id="contato">
         <div class="container">
             <div class="footer-content">
@@ -494,6 +448,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     <a href="solicitar_acesso.php">Solicitar Acesso</a>
                     <a href="reset-password.php">Recuperar Senha</a>
                 </div>
+                <!-- <div class="footer-section">
+          <h3>Suporte</h3>
+          <a href="mailto:cosp@economia.gov.df.br">cosp@economia.gov.df.br</a>
+          <a href="tel:+55(61)3314-6213">(61) 3314-6213</a>
+          <p>Horário: Segunda a Sexta, 8h às 18h</p>
+        </div> -->
                 <div class="footer-section">
                     <h3>Sobre</h3>
                     <p>Desenvolvido pela equipe técnica da Subsecretária de Captação de Recursos - SUCAP.</p>
@@ -501,13 +461,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </div>
             <!-- Footer padronizado -->
             <div class="footer-bottom">
-                <p>&copy; <?php echo date("Y"); ?> SICEF - Sistema de Caderno de Emendas Federais. Todos os direitos
-                    reservados.</p>
+                <p>&copy; <?php echo date("Y"); ?> SICEF - Sistema de Caderno de Emendas Federais. Todos os direitos reservados.</p>
             </div>
         </div>
     </footer>
 
-    <!-- Inclusão do Bootstrap JS para funcionalidades -->
+    <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 

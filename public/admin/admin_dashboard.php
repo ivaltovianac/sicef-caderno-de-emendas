@@ -1,33 +1,40 @@
-
 <?php
-// C:\xampp\htdocs\sicef-caderno-de-emendas\public\admin\admin_dashboard.php
+// Inicia a sessão para verificar se o usuário está logado e é administrador
 session_start();
+
+// Verifica se o usuário está logado e se é administrador
 if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    // Redireciona para a página de login caso não seja administrador
     header("Location: ../login.php");
     exit;
 }
 
+// Inclui os arquivos de configuração do banco de dados e sincronizador
 require_once __DIR__ . "/../../config/db.php";
 require_once __DIR__ . "/../../config/sincronizador.php";
+
+// Inclui o autoloader do Composer para carregar as bibliotecas
 require_once __DIR__ . "/../../vendor/autoload.php";
 
+// Importa as classes necessárias do PhpSpreadsheet
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
+// Verifica se a classe TCPDF está disponível
 if (!class_exists('TCPDF')) {
     die('TCPDF não está instalado. Por favor, instale via composer: composer require tecnickcom/tcpdf');
 }
 
-// Solicitações de acesso (exemplo robusto)
+// Conta o número de solicitações de acesso pendentes
 $stmt_solicitacoes = $pdo->query("SELECT COUNT(*) FROM solicitacoes_acesso WHERE status = 'pendente'");
 $solicitacoes_pendentes = (int) $stmt_solicitacoes->fetchColumn();
 
-// Sugestões pendentes (apenas a quantidade para o badge)
+// Conta o número de sugestões pendentes
 $stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
 $qtde_sugestoes_pendentes = (int) $stmt_sugestoes->fetchColumn();
 
-// Campos editáveis para sugestões
+// Define os campos editáveis para sugestões
 $campos_editaveis = [
     'objeto_intervencao' => 'Objeto de Intervenção',
     'valor' => 'Valor',
@@ -37,37 +44,47 @@ $campos_editaveis = [
     'pontuacao' => 'Pontuação'
 ];
 
-// Processar sincronização
+// Processa a sincronização dos dados com a planilha
 if (isset($_GET['sincronizar'])) {
+    // Cria uma instância do sincronizador
     $sincronizador = new SincronizadorEmendas(
         $pdo,
         __DIR__ . '/../../uploads/Cadernos_DeEmendas_.xlsx'
     );
+    // Executa a sincronização
     $resultado = $sincronizador->sincronizar();
+    // Armazena a mensagem de resultado na sessão
     $_SESSION['mensagem_sincronizacao'] = $resultado['message'];
+    // Redireciona para a página do dashboard
     header('Location: admin_dashboard.php');
     exit;
 }
 
-// Processar resposta à sugestão
+// Processa a resposta a uma sugestão
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'responder_sugestao') {
+        // Obtém os dados do formulário
         $sugestao_id = $_POST['sugestao_id'];
         $resposta = $_POST['resposta'];
         $status = $_POST['status'];
 
         try {
+            // Atualiza o status e a resposta da sugestão
             $stmt = $pdo->prepare("UPDATE sugestoes_emendas SET status = ?, resposta = ?, respondido_em = NOW(), respondido_por = ? WHERE id = ?");
             $stmt->execute([$status, $resposta, $_SESSION['user']['id'], $sugestao_id]);
 
+            // Insere uma notificação para o usuário que fez a sugestão
             $stmt_notif = $pdo->prepare("INSERT INTO notificacoes (usuario_id, tipo, mensagem, referencia_id, criado_em) SELECT usuario_id, 'resposta_sugestao', ?, id, NOW() FROM sugestoes_emendas WHERE id = ?");
             $mensagem = "Sua sugestão #$sugestao_id foi $status";
             $stmt_notif->execute([$mensagem, $sugestao_id]);
 
+            // Armazena uma mensagem de sucesso na sessão
             $_SESSION['message'] = "Resposta enviada com sucesso!";
+            // Redireciona para a página do dashboard
             header('Location: admin_dashboard.php');
             exit;
         } catch (PDOException $e) {
+            // Armazena uma mensagem de erro na sessão
             $_SESSION['message'] = "Erro ao responder sugestão: " . $e->getMessage();
         }
     }
@@ -77,26 +94,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 function lerPlanilhaEmendas($caminhoArquivo)
 {
     try {
+        // Verifica se o arquivo existe
         if (!file_exists($caminhoArquivo)) {
             throw new Exception("Arquivo não encontrado: " . $caminhoArquivo);
         }
+        // Carrega a planilha
         $spreadsheet = IOFactory::load($caminhoArquivo);
         $sheet = $spreadsheet->getActiveSheet();
         $emendas = [];
 
+        // Itera pelas linhas da planilha
         foreach ($sheet->getRowIterator(2) as $row) {
             $cells = [];
             foreach ($row->getCellIterator() as $cell) {
                 $cells[] = $cell->getValue();
             }
 
+            // Verifica se a linha não está vazia
             if (!empty($cells[0])) {
                 $valor = $cells[10] ?? '0';
                 if (is_string($valor)) {
+                    // Formata o valor para o formato numérico
                     $valor = str_replace(['R$', '.', ','], ['', '', '.'], $valor);
                     $valor = preg_replace('/[^0-9.]/', '', $valor);
                 }
 
+                // Adiciona os dados da emenda ao array
                 $emendas[] = [
                     'tipo_emenda' => $cells[0] ?? '',
                     'eixo_tematico' => $cells[1] ?? '',
@@ -108,13 +131,14 @@ function lerPlanilhaEmendas($caminhoArquivo)
                     'programa' => $cells[7] ?? '',
                     'acao' => $cells[8] ?? '',
                     'categoria_economica' => $cells[9] ?? '',
-                    'valor' => (float)$valor,
+                    'valor' => (float) $valor,
                     'justificativa' => $cells[11] ?? ''
                 ];
             }
         }
         return $emendas;
     } catch (Exception $e) {
+        // Registra o erro no log
         error_log("Erro ao ler planilha: " . $e->getMessage());
         return [];
     }
@@ -124,6 +148,7 @@ function lerPlanilhaEmendas($caminhoArquivo)
 $where_conditions = [];
 $params = [];
 
+// Adiciona condições de filtro com base nos parâmetros GET
 if (!empty($_GET['tipo_caderno'])) {
     $where_conditions[] = "tipo_emenda ILIKE ?";
     $params[] = '%' . $_GET['tipo_caderno'] . '%';
@@ -151,24 +176,25 @@ if (!empty($_GET['programa'])) {
 
 if (!empty($_GET['ano_projeto'])) {
     $where_conditions[] = "EXTRACT(YEAR FROM criado_em) = ?";
-    $params[] = (int)$_GET['ano_projeto'];
+    $params[] = (int) $_GET['ano_projeto'];
 }
 
+// Monta a cláusula WHERE
 $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
 // Paginação
 $itens_por_pagina = 20;
-$pagina_atual = max(1, (int)($_GET['pagina'] ?? 1));
+$pagina_atual = max(1, (int) ($_GET['pagina'] ?? 1));
 $offset = ($pagina_atual - 1) * $itens_por_pagina;
 
-// Count query com prepared statements
+// Query para contar o número total de emendas
 $count_query = "SELECT COUNT(*) FROM emendas $where_clause";
 $stmt_count = $pdo->prepare($count_query);
 $stmt_count->execute($params);
 $total_emendas = $stmt_count->fetchColumn();
 $total_paginas = ceil($total_emendas / $itens_por_pagina);
 
-// Main query com prepared statements
+// Query principal para buscar as emendas
 $query = "SELECT * FROM emendas $where_clause ORDER BY criado_em DESC LIMIT ? OFFSET ?";
 $params[] = $itens_por_pagina;
 $params[] = $offset;
@@ -176,7 +202,7 @@ $stmt = $pdo->prepare($query);
 $stmt->execute($params);
 $emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Carregar opções para filtros
+// Carrega as opções para os filtros
 try {
     $tipos_emenda = $pdo->query("SELECT DISTINCT tipo_emenda FROM emendas WHERE tipo_emenda IS NOT NULL ORDER BY tipo_emenda")->fetchAll(PDO::FETCH_COLUMN);
     $eixos_tematicos = $pdo->query("SELECT DISTINCT eixo_tematico FROM emendas WHERE eixo_tematico IS NOT NULL ORDER BY eixo_tematico")->fetchAll(PDO::FETCH_COLUMN);
@@ -189,11 +215,12 @@ try {
     $categorias_economicas = $pdo->query("SELECT DISTINCT categoria_economica FROM emendas WHERE categoria_economica IS NOT NULL ORDER BY categoria_economica")->fetchAll(PDO::FETCH_COLUMN);
     $anos = $pdo->query("SELECT DISTINCT EXTRACT(YEAR FROM criado_em) AS ano FROM emendas ORDER BY ano DESC")->fetchAll(PDO::FETCH_COLUMN);
 } catch (PDOException $e) {
+    // Registra o erro no log
     error_log("Erro ao carregar filtros: " . $e->getMessage());
     $tipos_emenda = $eixos_tematicos = $unidades = $ods_values = $regionalizacoes = $unidades_orcamentarias = $programas = $acoes = $categorias_economicas = $anos = [];
 }
 
-// Carregar sugestões pendentes para exibição
+// Carrega as sugestões pendentes para exibição
 try {
     $stmt_sugestoes_detalhes = $pdo->prepare("
         SELECT s.*, u.nome as usuario_nome, e.objeto_intervencao 
@@ -207,11 +234,12 @@ try {
     $stmt_sugestoes_detalhes->execute();
     $sugestoes_pendentes = $stmt_sugestoes_detalhes->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
+    // Registra o erro no log
     error_log("Erro ao carregar sugestões: " . $e->getMessage());
     $sugestoes_pendentes = [];
 }
 
-// Exportar dados
+// Exporta os dados para Excel
 if (isset($_GET['export'])) {
     $export_query = "SELECT * FROM emendas $where_clause ORDER BY criado_em DESC";
     $stmt_export = $pdo->prepare($export_query);
@@ -219,14 +247,15 @@ if (isset($_GET['export'])) {
     $dados_export = $stmt_export->fetchAll(PDO::FETCH_ASSOC);
 
     if ($_GET['export'] === 'excel') {
+        // Cria uma nova planilha
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
-        
-        // Cabeçalhos
+
+        // Define os cabeçalhos
         $headers = ['ID', 'Tipo', 'Eixo Temático', 'Órgão', 'Objeto', 'ODS', 'Valor', 'Justificativa', 'Regionalização', 'Unidade Orçamentária', 'Programa', 'Ação', 'Categoria Econômica', 'Criado em'];
         $sheet->fromArray($headers, null, 'A1');
-        
-        // Dados
+
+        // Preenche os dados
         $row = 2;
         foreach ($dados_export as $emenda) {
             $sheet->fromArray([
@@ -247,7 +276,8 @@ if (isset($_GET['export'])) {
             ], null, "A$row");
             $row++;
         }
-        
+
+        // Gera o arquivo Excel
         $writer = new Xlsx($spreadsheet);
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="emendas_' . date('Y-m-d') . '.xlsx"');
@@ -259,6 +289,7 @@ if (isset($_GET['export'])) {
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -336,7 +367,8 @@ if (isset($_GET['export'])) {
             transition: background-color 0.3s;
         }
 
-        .sidebar-menu a:hover, .sidebar-menu a.active {
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
             background-color: rgba(255, 255, 255, 0.1);
         }
 
@@ -561,6 +593,7 @@ if (isset($_GET['export'])) {
         }
     </style>
 </head>
+
 <body>
     <!-- Overlay para mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -703,7 +736,7 @@ if (isset($_GET['export'])) {
                                 $stmt_last_sync = $pdo->query("SELECT data_hora FROM sincronizacoes ORDER BY data_hora DESC LIMIT 1");
                                 $last_sync = $stmt_last_sync->fetchColumn();
                                 ?>
-                                <strong>Última sincronização:</strong> 
+                                <strong>Última sincronização:</strong>
                                 <?= $last_sync ? date('d/m/Y H:i:s', strtotime($last_sync)) : 'Nunca' ?>
                             </div>
                             <p class="mb-0">
@@ -796,7 +829,8 @@ if (isset($_GET['export'])) {
                             <span class="material-icons me-1">clear</span>
                             Limpar
                         </a>
-                        <a href="?export=excel<?= !empty($_SERVER['QUERY_STRING']) ? '&' . $_SERVER['QUERY_STRING'] : '' ?>" class="btn btn-success">
+                        <a href="?export=excel<?= !empty($_SERVER['QUERY_STRING']) ? '&' . $_SERVER['QUERY_STRING'] : '' ?>"
+                            class="btn btn-success">
                             <span class="material-icons me-1">download</span>
                             Exportar Excel
                         </a>
@@ -855,7 +889,8 @@ if (isset($_GET['export'])) {
                     <ul class="pagination justify-content-center">
                         <?php if ($pagina_atual > 1): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
                                     Anterior
                                 </a>
                             </li>
@@ -863,7 +898,8 @@ if (isset($_GET['export'])) {
 
                         <?php for ($i = max(1, $pagina_atual - 2); $i <= min($total_paginas, $pagina_atual + 2); $i++): ?>
                             <li class="page-item <?= $i === $pagina_atual ? 'active' : '' ?>">
-                                <a class="page-link" href="?pagina=<?= $i ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $i ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
                                     <?= $i ?>
                                 </a>
                             </li>
@@ -871,7 +907,8 @@ if (isset($_GET['export'])) {
 
                         <?php if ($pagina_atual < $total_paginas): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
                                     Próxima
                                 </a>
                             </li>
@@ -893,19 +930,22 @@ if (isset($_GET['export'])) {
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
                                         <strong><?= htmlspecialchars($sugestao['usuario_nome']) ?></strong>
-                                        <small class="text-muted">- <?= date('d/m/Y H:i', strtotime($sugestao['criado_em'])) ?></small>
+                                        <small class="text-muted">-
+                                            <?= date('d/m/Y H:i', strtotime($sugestao['criado_em'])) ?></small>
                                     </div>
                                     <span class="badge bg-warning">Pendente</span>
                                 </div>
                                 <p class="mb-2">
-                                    <strong>Campo:</strong> <?= htmlspecialchars($campos_editaveis[$sugestao['campo_sugerido']] ?? $sugestao['campo_sugerido']) ?><br>
+                                    <strong>Campo:</strong>
+                                    <?= htmlspecialchars($campos_editaveis[$sugestao['campo_sugerido']] ?? $sugestao['campo_sugerido']) ?><br>
                                     <strong>Valor sugerido:</strong> <?= htmlspecialchars($sugestao['valor_sugerido']) ?>
                                 </p>
                                 <form method="POST" class="d-flex gap-2 align-items-end">
                                     <input type="hidden" name="action" value="responder_sugestao">
                                     <input type="hidden" name="sugestao_id" value="<?= $sugestao['id'] ?>">
                                     <div class="flex-grow-1">
-                                        <textarea name="resposta" class="form-control" placeholder="Resposta..." rows="2"></textarea>
+                                        <textarea name="resposta" class="form-control" placeholder="Resposta..."
+                                            rows="2"></textarea>
                                     </div>
                                     <select name="status" class="form-control" required style="min-width: 150px;">
                                         <option value="aprovado">Aprovar</option>
@@ -931,18 +971,18 @@ if (isset($_GET['export'])) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Menu toggle responsivo
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const menuToggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-            menuToggle.addEventListener('click', function() {
+            menuToggle.addEventListener('click', function () {
                 sidebar.classList.toggle('show');
                 sidebarOverlay.classList.toggle('show');
             });
 
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('show');
                 sidebarOverlay.classList.remove('show');
             });
@@ -950,7 +990,7 @@ if (isset($_GET['export'])) {
             // Fechar sidebar ao clicar em link (mobile)
             const sidebarLinks = sidebar.querySelectorAll('a');
             sidebarLinks.forEach(link => {
-                link.addEventListener('click', function() {
+                link.addEventListener('click', function () {
                     if (window.innerWidth <= 768) {
                         sidebar.classList.remove('show');
                         sidebarOverlay.classList.remove('show');
@@ -960,4 +1000,5 @@ if (isset($_GET['export'])) {
         });
     </script>
 </body>
+
 </html>
