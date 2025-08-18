@@ -1,32 +1,64 @@
 <?php
-// SICEF-caderno-de-emendas/public/reset-password.php
+/**
+ * Redefinição de Senha - SICEF
+ *
+ * Este arquivo permite que usuários redefinam sua senha no sistema.
+ * Ele valida os dados do formulário, verifica se o email existe, atualiza a senha
+ * e exibe mensagens de sucesso ou erro.
+ *
+ * Funcionalidades:
+ * - Validação dos campos do formulário
+ * - Verificação de correspondência das senhas
+ * - Atualização da senha no banco de dados
+ * - Exibição de mensagens de feedback
+ * - Validação de senha em tempo real via JavaScript
+ *
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
+// Inicia a sessão para armazenar mensagens e dados do usuário
 session_start();
+
+// Inclui arquivos para conexão com banco e manipulação de usuários
 require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/../models/User.php";
 
+// Inicializa variáveis para mensagens de feedback
 $message = "";
 $error = "";
 
+// Verifica se o formulário foi enviado via POST
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // Obtém e limpa os dados do formulário
     $email = trim($_POST["email"] ?? "");
     $nova_senha = $_POST["nova_senha"] ?? "";
     $confirmar_senha = $_POST["confirmar_senha"] ?? "";
 
+    // Valida os campos obrigatórios
     if (empty($email) || empty($nova_senha) || empty($confirmar_senha)) {
         $error = "Por favor, preencha todos os campos.";
-    } elseif ($nova_senha !== $confirmar_senha) {
+    }
+    // Verifica se as senhas coincidem
+    elseif ($nova_senha !== $confirmar_senha) {
         $error = "As senhas não coincidem.";
-    } elseif (strlen($nova_senha) < 6) {
+    }
+    // Verifica o tamanho mínimo da senha
+    elseif (strlen($nova_senha) < 6) {
         $error = "A senha deve ter pelo menos 6 caracteres.";
     } else {
         try {
+            // Cria instância do modelo User para manipulação dos dados
             $userModel = new User($pdo);
+            // Busca usuário pelo email informado
             $user = $userModel->findByEmail($email);
 
+            // Verifica se o usuário existe
             if (!$user) {
                 $error = "E-mail não encontrado no sistema.";
             } else {
-                // FIX: Atualizar senha usando método do modelo
+                // Atualiza a senha do usuário no banco de dados
                 if ($userModel->updatePassword($email, $nova_senha)) {
                     $message = "Senha alterada com sucesso! Você pode fazer login agora.";
                 } else {
@@ -34,6 +66,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 }
             }
         } catch (PDOException $e) {
+            // Registra erro no log do servidor e exibe mensagem
             error_log("Erro no reset de senha: " . $e->getMessage());
             $error = "Erro interno do servidor. Tente novamente.";
         }
@@ -47,11 +80,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Redefinir Senha - SICEF</title>
-    <!-- Bootstrap CSS, Google Fonts and Material Icons -->
+    <!-- Inclusão de CSS e fontes externas para estilo e ícones -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet" />
     <style>
+        /* Definição de variáveis de cores para identidade visual */
         :root {
             --primary-color: #00796B;
             --secondary-color: #009688;
@@ -60,6 +94,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             --dark-color: #263238;
         }
 
+        /* Estilização geral do corpo da página */
         body {
             font-family: 'Poppins', sans-serif;
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
@@ -69,7 +104,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin: 0;
         }
 
-        /* Header styles */
+        /* Estilização do cabeçalho */
         header {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
@@ -77,12 +112,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
+        /* Container centralizado com largura máxima */
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
         }
 
+        /* Layout flexível para conteúdo do cabeçalho */
         .header-content {
             display: flex;
             justify-content: space-between;
@@ -90,6 +127,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             flex-wrap: wrap;
         }
 
+        /* Estilização da logo */
         .logo {
             display: flex;
             align-items: center;
@@ -100,6 +138,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-right: 15px;
         }
 
+        /* Menu de navegação */
         .nav-menu {
             display: flex;
             gap: 1rem;
@@ -137,6 +176,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transform: translateY(-2px);
         }
 
+        /* Botão primário */
         .btn-primary {
             background: linear-gradient(13deg, var(--accent-color));
             border: none;
@@ -149,12 +189,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         }
 
         .btn-primary:hover {
-            /* background-color: #FFB300;
-            color: var(--dark-color); */
             transform: translateY(-2px);
             background: linear-gradient(135deg, #006157, #00796B);
         }
 
+        /* Responsividade para telas menores */
         @media (max-width: 768px) {
             .header-content {
                 flex-direction: column;
@@ -167,7 +206,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             }
         }
 
-        /* Main content area to center the form */
+        /* Área principal para centralizar o formulário */
         .main-content {
             flex: 1;
             display: flex;
@@ -176,6 +215,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 20px;
         }
 
+        /* Container do formulário de redefinição */
         .reset-container {
             background: white;
             border-radius: 15px;
@@ -185,6 +225,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             overflow: hidden;
         }
 
+        /* Cabeçalho do formulário */
         .reset-header {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
@@ -202,14 +243,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             opacity: 0.9;
         }
 
+        /* Corpo do formulário */
         .reset-body {
             padding: 2rem;
         }
 
+        /* Espaçamento entre grupos de formulário */
         .form-group {
             margin-bottom: 1.5rem;
         }
 
+        /* Rodapé do formulário */
         .reset-footer {
             display: flex;
             flex-direction: column;
@@ -226,12 +270,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             font-weight: 500;
         }
 
+        /* Estilização dos rótulos */
         .form-label {
             font-weight: 500;
             color: var(--dark-color);
             margin-bottom: 0.5rem;
         }
 
+        /* Estilização dos campos de formulário */
         .form-control {
             border: 2px solid #e0e0e0;
             border-radius: 10px;
@@ -240,11 +286,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transition: border-color 0.3s;
         }
 
+        /* Efeito de foco nos campos */
         .form-control:focus {
             border-color: var(--primary-color);
             box-shadow: 0 0 0 0.2rem rgba(0, 121, 107, 0.25);
         }
 
+        /* Botão primário de envio */
         .btn-primary-login {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             border: none;
@@ -261,12 +309,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             background: linear-gradient(135deg, #006157, #00796B);
         }
 
+        /* Estilização dos alertas */
         .alert {
             border-radius: 10px;
             border: none;
         }
 
-        /* Footer styles */
+        /* Estilização do rodapé */
         footer {
             background: var(--dark-color);
             color: white;
@@ -274,6 +323,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-top: auto;
         }
 
+        /* Conteúdo do rodapé com grid responsivo */
         .footer-content {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -283,6 +333,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 0 20px;
         }
 
+        /* Seções do rodapé */
         .footer-section h3 {
             color: var(--accent-color);
             margin-bottom: 1rem;
@@ -300,6 +351,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--accent-color);
         }
 
+        /* Rodapé inferior */
         .footer-bottom {
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             padding-top: 1rem;
@@ -311,7 +363,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding-right: 20px;
         }
 
-        /* Responsividade */
+        /* Responsividade para telas pequenas */
         @media (max-width: 480px) {
             .reset-container {
                 margin: 10px;
@@ -326,33 +378,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 </head>
 
 <body>
-    <!-- Header -->
+    <!-- Cabeçalho da página -->
     <header>
         <div class="container">
             <div class="header-content">
                 <div class="logo">
+                    <!-- Logo com link para página inicial -->
                     <a href="apresentacao.php"><img src="imagens/logo.svg" alt="SICEF Logo" /></a>
                 </div>
+                <!-- Menu de navegação -->
                 <nav class="nav-menu">
                     <a href="apresentacao.php">Início</a>
                     <a href="#contato">Contatos</a>
                     <a href="login.php" class="btn btn-primary">
-                    <span class="material-icons">login</span>
-                    Entrar</a>
+                        <span class="material-icons">login</span>
+                        Entrar
+                    </a>
                 </nav>
             </div>
         </div>
     </header>
 
-    <!-- Main content -->
+    <!-- Conteúdo principal -->
     <div class="main-content">
         <div class="reset-container">
+            <!-- Cabeçalho do formulário -->
             <div class="reset-header">
                 <h2><span class="material-icons me-2">lock_reset</span>Redefinir Senha</h2>
                 <p>Digite seu e-mail e nova senha</p>
             </div>
 
+            <!-- Corpo do formulário -->
             <div class="reset-body">
+                <!-- Mensagem de sucesso -->
                 <?php if (!empty($message)): ?>
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         <span class="material-icons me-2">check_circle</span>
@@ -361,6 +419,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </div>
                 <?php endif; ?>
 
+                <!-- Mensagem de erro -->
                 <?php if (!empty($error)): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <span class="material-icons me-2">error</span>
@@ -369,6 +428,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </div>
                 <?php endif; ?>
 
+                <!-- Formulário de redefinição de senha -->
                 <form method="POST">
                     <div class="form-group">
                         <label for="email" class="form-label">
@@ -404,6 +464,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 </form>
             </div>
 
+            <!-- Rodapé do formulário com links úteis -->
             <div class="reset-footer">
                 <div class="mb-2">
                     <a href="formulario_para_login.php">
@@ -421,7 +482,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
     </div>
 
-    <!-- Footer -->
+    <!-- Rodapé da página com informações de contato e links -->
     <footer id="contato">
         <div class="container">
             <div class="footer-content">
@@ -444,17 +505,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     <p>Desenvolvido pela equipe técnica da Subsecretária de Captação de Recursos - SUCAP.</p>
                 </div>
             </div>
-            <!-- Footer padronizado -->
             <div class="footer-bottom">
                 <p>&copy; <?php echo date("Y"); ?> SICEF - Sistema de Caderno de Emendas Federais. Todos os direitos reservados.</p>
             </div>
         </div>
     </footer>
 
-    <!-- Bootstrap JS Bundle -->
+    <!-- Inclusão do Bootstrap JS para funcionalidades -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Validação de senhas em tempo real
+        // Validação em tempo real para confirmar se as senhas coincidem
         document.getElementById('confirmar_senha').addEventListener('input', function () {
             const senha = document.getElementById('nova_senha').value;
             const confirmar = this.value;
