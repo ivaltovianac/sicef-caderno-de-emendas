@@ -1,824 +1,858 @@
+
 <?php
+// SICEF-caderno-de-emendas/public/admin/gerenciar_usuarios.php
 session_start();
-if (!isset($_SESSION['user']) || !$_SESSION['user']['is_admin']) {
-    header('Location: ../login.php');
+if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    header("Location: ../login.php");
     exit;
 }
 
-require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../../models/User.php";
 
-// Obter lista de usuários
-$stmt = $pdo->query("SELECT * FROM usuarios ORDER BY nome ASC");
-$usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Contadores para badges
+$stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
+$solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
 
-// Variável para usuário em edição
-$usuario_edicao = null;
+$stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
+$qtde_sugestoes_pendentes = $stmt_sugestoes->fetchColumn();
 
-// Processar ações (excluir, editar, adicionar)
+$userModel = new User($pdo);
+$message = "";
+$error = "";
+
+// Processa ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['excluir_usuario'])) {
-        $id = $_POST['id'];
-        try {
-            $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = ?");
-            if ($stmt->execute([$id])) {
-                $_SESSION['sucesso'] = "Usuário excluído com sucesso!";
-            } else {
-                $_SESSION['erro'] = "Erro ao excluir usuário!";
-            }
-        } catch (PDOException $e) {
-            $_SESSION['erro'] = "Erro ao excluir usuário: " . $e->getMessage();
-        }
-        header("Location: gerenciar_usuarios.php");
-        exit;
-    }
-    
-    if (isset($_POST['editar_usuario'])) {
-        $id = $_POST['id'];
-        $nome = trim($_POST['nome']);
-        $email = trim($_POST['email']);
-        $senha = $_POST['senha'];
-        $confirmar_senha = $_POST['confirmar_senha'];
-        $tipo = $_POST['tipo'];
-        
-        // Converter is_admin para boolean corretamente
-        $is_admin = ($tipo === 'admin') ? true : (isset($_POST['is_admin']) ? filter_var($_POST['is_admin'], FILTER_VALIDATE_BOOLEAN) : false);
-        
-        try {
-            // Verificar se email já existe (exceto para o próprio usuário)
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ? AND id != ?");
-            $stmt->execute([$email, $id]);
-            if ($stmt->fetch()) {
-                $_SESSION['erro'] = "Este e-mail já está cadastrado para outro usuário!";
-                header("Location: gerenciar_usuarios.php");
-                exit;
-            }
-            
-            // Atualizar dados básicos
-            $stmt = $pdo->prepare("UPDATE usuarios SET nome = ?, email = ?, is_admin = ?, tipo = ? WHERE id = ?");
-            if ($stmt->execute([$nome, $email, $is_admin ? 'true' : 'false', $tipo, $id])) {
-                // Se senha foi fornecida, atualizar também
-                if (!empty($senha)) {
-                    if ($senha !== $confirmar_senha) {
-                        $_SESSION['erro'] = "As senhas não coincidem!";
-                        header("Location: gerenciar_usuarios.php");
-                        exit;
-                    }
-                    $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
-                    $stmt = $pdo->prepare("UPDATE usuarios SET senha = ? WHERE id = ?");
-                    $stmt->execute([$senha_hash, $id]);
+    try {
+        switch ($_POST['action']) {
+            case 'create':
+                // Cria usuário
+                $userData = [
+                    'nome' => trim($_POST['nome'] ?? ''),
+                    'email' => trim($_POST['email'] ?? ''),
+                    'senha' => $_POST['senha'] ?? '',
+                    'tipo' => $_POST['tipo'] ?? '',
+                    'is_admin' => isset($_POST['is_admin']) ? 1 : 0
+                ];
+                
+                if (empty($userData['nome']) || empty($userData['email']) || empty($userData['senha']) || empty($userData['tipo'])) {
+                    throw new Exception("Todos os campos são obrigatórios");
                 }
                 
-                $_SESSION['sucesso'] = "Usuário atualizado com sucesso!";
-            } else {
-                $_SESSION['erro'] = "Erro ao atualizar usuário!";
-            }
-        } catch (PDOException $e) {
-            $_SESSION['erro'] = "Erro ao atualizar usuário: " . $e->getMessage();
+                if (!filter_var($userData['email'], FILTER_VALIDATE_EMAIL)) {
+                    throw new Exception("E-mail inválido");
+                }
+                
+                if (strlen($userData['senha']) < 6) {
+                    throw new Exception("A senha deve ter pelo menos 6 caracteres");
+                }
+                
+                $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha, tipo, is_admin, is_user, criado_em) VALUES (?, ?, ?, ?, ?, true, NOW())");
+                $hashedPassword = password_hash($userData['senha'], PASSWORD_DEFAULT);
+                
+                if ($stmt->execute([$userData['nome'], $userData['email'], $hashedPassword, $userData['tipo'], $userData['is_admin']])) {
+                    $message = "Usuário criado com sucesso!";
+                } else {
+                    throw new Exception("Erro ao criar usuário");
+                }
+                break;
+
+            case 'update':
+                // Atualizar usuário
+                $id = (int)$_POST['id'];
+                $userData = [
+                    'nome' => trim($_POST['nome'] ?? ''),
+                    'email' => trim($_POST['email'] ?? ''),
+                    'tipo' => $_POST['tipo'] ?? '',
+                    'is_admin' => isset($_POST['is_admin']) ? 1 : 0,
+                    'is_user' => isset($_POST['is_user']) ? 1 : 0
+                ];
+                
+                if (!empty($_POST['senha'])) {
+                    if (strlen($_POST['senha']) < 6) {
+                        throw new Exception("A senha deve ter pelo menos 6 caracteres");
+                    }
+                    $userData['senha'] = $_POST['senha'];
+                }
+                
+                $result = $userModel->update($id, $userData);
+                if ($result['success']) {
+                    $message = $result['message'];
+                } else {
+                    throw new Exception($result['message']);
+                }
+                break;
+
+            case 'delete':
+                // Deletar usuário
+                $id = (int)$_POST['id'];
+                if ($id === $_SESSION['user']['id']) {
+                    throw new Exception("Não é possível deletar seu próprio usuário");
+                }
+                
+                $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = ? AND id != ?");
+                if ($stmt->execute([$id, $_SESSION['user']['id']])) {
+                    $message = "Usuário deletado com sucesso!";
+                } else {
+                    throw new Exception("Erro ao deletar usuário");
+                }
+                break;
+
+            default:
+                throw new Exception("Ação inválida");
         }
-        header("Location: gerenciar_usuarios.php");
-        exit;
-    }
-    
-    if (isset($_POST['adicionar_usuario'])) {
-        $nome = trim($_POST['nome']);
-        $email = trim($_POST['email']);
-        $senha = $_POST['senha'];
-        $confirmar_senha = $_POST['confirmar_senha'];
-        $tipo = $_POST['tipo'];
-        
-        // Converter is_admin para boolean corretamente
-        $is_admin = ($tipo === 'admin') ? true : (isset($_POST['is_admin']) ? filter_var($_POST['is_admin'], FILTER_VALIDATE_BOOLEAN) : false);
-        
-        try {
-            // Validações
-            if (empty($nome) || empty($email) || empty($senha) || empty($tipo)) {
-                $_SESSION['erro'] = "Preencha todos os campos obrigatórios!";
-                header("Location: gerenciar_usuarios.php");
-                exit;
-            }
-            
-            if ($senha !== $confirmar_senha) {
-                $_SESSION['erro'] = "As senhas não coincidem!";
-                header("Location: gerenciar_usuarios.php");
-                exit;
-            }
-            
-            if (strlen($senha) < 8) {
-                $_SESSION['erro'] = "A senha deve ter pelo menos 8 caracteres!";
-                header("Location: gerenciar_usuarios.php");
-                exit;
-            }
-            
-            // Verificar se email já existe
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
-            $stmt->execute([$email]);
-            if ($stmt->fetch()) {
-                $_SESSION['erro'] = "Este e-mail já está cadastrado!";
-                header("Location: gerenciar_usuarios.php");
-                exit;
-            }
-            
-            // Criar hash da senha
-            $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
-            
-            // Inserir no banco de dados (convertendo explicitamente o boolean para string)
-            $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha, is_admin, tipo, is_user) VALUES (?, ?, ?, ?, ?, true)");
-            if ($stmt->execute([$nome, $email, $senha_hash, $is_admin ? 'true' : 'false', $tipo])) {
-                $_SESSION['sucesso'] = "Usuário cadastrado com sucesso!";
-            } else {
-                $_SESSION['erro'] = "Erro ao cadastrar usuário!";
-            }
-        } catch (PDOException $e) {
-            $_SESSION['erro'] = "Erro ao cadastrar usuário: " . $e->getMessage();
-        }
-        header("Location: gerenciar_usuarios.php");
-        exit;
+    } catch (Exception $e) {
+        $error = $e->getMessage();
+    } catch (PDOException $e) {
+        error_log("Erro no gerenciamento de usuários: " . $e->getMessage());
+        $error = "Erro interno do servidor";
     }
 }
 
-// Determinar cores do usuário baseado no tipo
-$user_colors = [
-    'primary' => '#6f42c1',
-    'secondary' => '#e83e8c',
-    'accent' => '#fd7e14'
-];
+// Filtros e paginação
+$filtros = [];
+$where_conditions = [];
+$params = [];
 
-if (isset($_SESSION["user"]["tipo"])) {
-    switch ($_SESSION["user"]["tipo"]) {
-        case 'Deputado':
-            $user_colors = [
-                'primary' => '#018bd2',
-                'secondary' => '#51ae32',
-                'accent' => '#fdfefe'
-            ];
-            break;
-        case 'Senador':
-            $user_colors = [
-                'primary' => '#51b949',
-                'secondary' => '#0094db',
-                'accent' => '#fefefe'
-            ];
-            break;
-        case 'Administrador':
-            $user_colors = [
-                'primary' => '#6f42c1',
-                'secondary' => '#e83e8c',
-                'accent' => '#fd7e14'
-            ];
-            break;
-    }
+if (!empty($_GET['nome'])) {
+    $where_conditions[] = "nome ILIKE ?";
+    $params[] = '%' . $_GET['nome'] . '%';
+    $filtros['nome'] = $_GET['nome'];
 }
+
+if (!empty($_GET['email'])) {
+    $where_conditions[] = "email ILIKE ?";
+    $params[] = '%' . $_GET['email'] . '%';
+    $filtros['email'] = $_GET['email'];
+}
+
+if (!empty($_GET['tipo'])) {
+    $where_conditions[] = "tipo = ?";
+    $params[] = $_GET['tipo'];
+    $filtros['tipo'] = $_GET['tipo'];
+}
+
+if (isset($_GET['status']) && $_GET['status'] !== '') {
+    $where_conditions[] = "is_user = ?";
+    $params[] = (bool)$_GET['status'];
+    $filtros['status'] = $_GET['status'];
+}
+
+$where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
+
+// Paginação
+$itens_por_pagina = 20;
+$pagina_atual = max(1, (int)($_GET['pagina'] ?? 1));
+$offset = ($pagina_atual - 1) * $itens_por_pagina;
+
+// Count query
+$count_query = "SELECT COUNT(*) FROM usuarios $where_clause";
+$stmt_count = $pdo->prepare($count_query);
+$stmt_count->execute($params);
+$total_usuarios = $stmt_count->fetchColumn();
+$total_paginas = ceil($total_usuarios / $itens_por_pagina);
+
+// Main query
+$query = "SELECT * FROM usuarios $where_clause ORDER BY nome LIMIT $itens_por_pagina OFFSET $offset";
+$stmt = $pdo->prepare($query);
+$stmt->execute($params);
+$usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Carregar tipos de usuário para filtros
+$tipos_usuario = $pdo->query("SELECT DISTINCT tipo FROM usuarios WHERE tipo IS NOT NULL ORDER BY tipo")->fetchAll(PDO::FETCH_COLUMN);
 ?>
-
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciar Usuários - SICEF</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <title>Gerenciar Usuários - SICEF Admin</title>
+    <!-- Bootstrap e Material Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: <?= $user_colors['primary'] ?>;
-            --secondary-color: <?= $user_colors['secondary'] ?>;
-            --accent-color: <?= $user_colors['accent'] ?>;
-            --dark-color: #2c3e50;
-            --light-color: #f8f9fa;
-            --border-color: #e0e0e0;
-            --error-color: #e74c3c;
-            --success-color: #2ecc71;
+            --primary-color: #00796B;
+            --secondary-color: #009688;
+            --accent-color: #FFC107;
+            --light-color: #ECEFF1;
+            --dark-color: #263238;
+            --sidebar-width: 280px;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
             overflow-x: hidden;
         }
-        
-        .admin-container {
-            display: flex;
-            min-height: 100vh;
-        }
-        
-        /* Sidebar */
-        .admin-sidebar {
-            width: 250px;
-            background-color: var(--dark-color);
-            color: white;
-            padding: 1.5rem 0;
+
+        /* Sidebar responsivo */
+        .sidebar {
             position: fixed;
+            top: 0;
+            left: 0;
             height: 100vh;
-            transition: all 0.3s;
-            z-index: 100;
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            z-index: 1000;
+            transition: transform 0.3s ease;
             overflow-y: auto;
         }
-        
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+        }
+
         .sidebar-header {
-            padding: 0 1.5rem 1.5rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        
-        .sidebar-header h2 {
-            font-size: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+
+        .sidebar-header h4 {
+            margin: 0;
+            font-weight: 600;
         }
-        
+
+        .sidebar-header p {
+            margin: 0;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
         .sidebar-menu {
             padding: 1rem 0;
         }
-        
+
         .sidebar-menu a {
             display: flex;
             align-items: center;
             padding: 0.75rem 1.5rem;
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            transition: all 0.3s;
-            gap: 0.75rem;
-        }
-        
-        .sidebar-menu a:hover, .sidebar-menu a.active {
-            background-color: rgba(255,255,255,0.1);
             color: white;
+            text-decoration: none;
+            transition: background-color 0.3s;
         }
-        
-        .sidebar-menu i {
-            font-size: 1.25rem;
+
+        .sidebar-menu a:hover, .sidebar-menu a.active {
+            background-color: rgba(255, 255, 255, 0.1);
         }
-        
-        /* Main Content */
-        .admin-content {
-            flex: 1;
-            margin-left: 250px;
-            transition: all 0.3s;
-            width: calc(100% - 250px);
+
+        .sidebar-menu .material-icons {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
         }
-        
-        /* Header */
-        .admin-header {
+
+        .badge {
+            margin-left: auto;
+        }
+
+        /* Main content responsivo */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+
+        .main-content.expanded {
+            margin-left: 0;
+        }
+
+        .top-bar {
             background: white;
-            padding: 1rem 2rem;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 90;
+            flex-wrap: wrap;
         }
-        
-        .admin-header h1 {
-            font-size: 1.5rem;
-            color: var(--dark-color);
-        }
-        
+
         .menu-toggle {
             display: none;
             background: none;
             border: none;
-            color: var(--dark-color);
             font-size: 1.5rem;
+            color: var(--primary-color);
             cursor: pointer;
         }
-        
-        .user-area {
+
+        .user-info {
             display: flex;
             align-items: center;
             gap: 1rem;
+            margin-left: auto;
         }
-        
-        .user-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: var(--primary-color);
+
+        .content-area {
+            padding: 2rem;
+        }
+
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card-header {
+            background: var(--primary-color);
             color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border-radius: 10px 10px 0 0 !important;
             font-weight: 600;
-            font-size: 1.2rem;
         }
-        
-        .user-name {
-            font-weight: 500;
+
+        .table {
+            margin-bottom: 0;
         }
-        
-        .logout-btn {
+
+        .table th {
+            border-top: none;
+            font-weight: 600;
             color: var(--dark-color);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
-        
-        /* Sidebar Overlay for Mobile */
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        .pagination .page-link {
+            color: var(--primary-color);
+        }
+
+        .pagination .page-item.active .page-link {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        /* Responsividade mobile */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .menu-toggle {
+                display: block;
+            }
+
+            .top-bar {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .user-info {
+                margin-left: 0;
+                width: 100%;
+                justify-content: center;
+            }
+
+            .content-area {
+                padding: 1rem;
+            }
+
+            .table-responsive {
+                font-size: 0.875rem;
+            }
+        }
+
+        /* Overlay para mobile */
         .sidebar-overlay {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.5);
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s;
-            z-index: 99;
-        }
-        
-        .sidebar-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-        
-        /* Content Area */
-        .content-area {
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
             width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            display: none;
         }
-        
-        /* Sections */
-        .config-section {
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+
+        .filters-card {
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 1.5rem;
             margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
-        
-        .config-section h2 {
-            font-size: 1.25rem;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .config-card {
-            background: var(--light-color);
-            padding: 1.5rem;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            transition: all 0.3s;
-        }
-        
-        .config-card h3 {
-            font-size: 1rem;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--secondary-color);
-        }
-        
-        .config-card p {
-            font-size: 0.9rem;
-            color: #666;
-            margin-bottom: 1rem;
-        }
-        
-        /* Form Elements */
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            font-size: 0.9rem;
-        }
-        
-        .form-control {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-size: 0.9rem;
-            transition: border-color 0.3s;
-        }
-        
-        .form-control:focus {
-            border-color: var(--primary-color);
-            outline: none;
-        }
-        
-        /* Buttons */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.75rem 1.5rem;
-            border-radius: 4px;
-            font-weight: 500;
-            cursor: pointer;
-            text-decoration: none;
-            transition: all 0.3s;
-            border: none;
-            gap: 0.5rem;
-        }
-        
-        .btn-primary {
-            background-color: var(--primary-color);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background-color: darken(var(--primary-color), 10%);
-        }
-        
-        .btn-secondary {
-            background-color: var(--secondary-color);
-            color: white;
-        }
-        
-        .btn-secondary:hover {
-            background-color: darken(var(--secondary-color), 10%);
-        }
-        
-        .btn-danger {
-            background-color: var(--error-color);
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background-color: darken(var(--error-color), 10%);
-        }
-        
-        .action-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            color: var(--primary-color);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        .action-link:hover {
-            color: darken(var(--primary-color), 10%);
-        }
-        
-        .action-link.danger {
-            color: var(--error-color);
-        }
-        
-        .action-link.danger:hover {
-            color: darken(var(--error-color), 10%);
-        }
-        
-        /* Table */
-        .emendas-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-        
-        .emendas-table th {
-            background: var(--primary-color);
-            color: white;
-            padding: 1rem 0.5rem;
-            text-align: left;
-            font-weight: 500;
-            font-size: 0.9rem;
-        }
-        
-        .emendas-table td {
-            padding: 1rem 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.9rem;
-        }
-        
-        .actions-cell {
-            display: flex;
+
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
-        }
-        
-        /* Messages */
-        .message {
-            padding: 1rem;
-            border-radius: 4px;
             margin-bottom: 1rem;
         }
-        
-        .message-success {
-            background: var(--success-color);
-            color: white;
+
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
         }
-        
-        .message-error {
-            background: var(--error-color);
-            color: white;
+
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
         }
-        
-        /* Mobile Responsiveness */
-        @media (max-width: 768px) {
-            .admin-sidebar {
-                transform: translateX(-100%);
-                position: fixed;
-                z-index: 1000;
-            }
-            
-            .admin-sidebar.active {
-                transform: translateX(0);
-            }
-            
-            .admin-content {
-                margin-left: 0;
-                width: 100%;
-            }
-            
-            .menu-toggle {
-                display: block;
-            }
-            
-            .sidebar-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100vh;
-                background: rgba(0,0,0,0.5);
-                display: none;
-                z-index: 999;
-            }
-            
-            .sidebar-overlay.active {
-                display: block;
-            }
-            
-            .content-area {
-                padding: 1rem;
-            }
-            
-            .emendas-table {
-                font-size: 0.8rem;
-            }
-            
-            .emendas-table th, .emendas-table td {
-                padding: 0.5rem;
-            }
-            
-            .actions-cell {
-                flex-direction: column;
-            }
+
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .admin-badge {
+            background-color: #fff3cd;
+            color: #856404;
         }
     </style>
 </head>
 <body>
-    <div class="admin-container">
-        <aside id="sidebar" class="admin-sidebar">
-            <div class="sidebar-header">
-                <h2>
-                    <i class="material-icons">admin_panel_settings</i>
-                    Painel Admin
-                </h2>
+    <!-- Overlay para mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar melhorado -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h4>SICEF Admin</h4>
+            <p>Painel Administrativo</p>
+        </div>
+        <nav class="sidebar-menu">
+            <a href="admin_dashboard.php">
+                <span class="material-icons">dashboard</span>
+                Dashboard
+            </a>
+            <a href="gerenciar_usuarios.php" class="active">
+                <span class="material-icons">people</span>
+                Usuários
+            </a>
+            <a href="solicitacoes_acesso.php">
+                <span class="material-icons">person_add</span>
+                Solicitações
+                <?php if ($solicitacoes_pendentes > 0): ?>
+                    <span class="badge bg-warning"><?= $solicitacoes_pendentes ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="sugestoes.php">
+                <span class="material-icons">lightbulb</span>
+                Sugestões
+                <?php if ($qtde_sugestoes_pendentes > 0): ?>
+                    <span class="badge bg-info"><?= $qtde_sugestoes_pendentes ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="relatorios.php">
+                <span class="material-icons">assessment</span>
+                Relatórios
+            </a>
+            <a href="configuracoes.php">
+                <span class="material-icons">settings</span>
+                Configurações
+            </a>
+            <a href="../logout.php">
+                <span class="material-icons">logout</span>
+                Sair
+            </a>
+        </nav>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content" id="mainContent">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <button class="menu-toggle" id="menuToggle">
+                <span class="material-icons">menu</span>
+            </button>
+            <h2>Gerenciar Usuários</h2>
+            <div class="user-info">
+                <span class="material-icons">account_circle</span>
+                <span>Olá, <?= htmlspecialchars($_SESSION['user']['nome']) ?></span>
             </div>
-            <nav class="sidebar-menu">
-                <a href="admin_dashboard.php">
-                    <i class="material-icons">dashboard</i>
-                    Dashboard
-                </a>
-                <a href="gerenciar_usuarios.php" class="active">
-                    <i class="material-icons">people</i>
-                    Usuários
-                </a>
-                <a href="relatorios.php">
-                    <i class="material-icons">assessment</i>
-                    Relatórios
-                </a>
-                <a href="configuracoes.php">
-                    <i class="material-icons">settings</i>
-                    Configurações
-                </a>
-                <a href="#" onclick="showOtherResources()">
-                    <i class="material-icons">more_horiz</i>
-                    Outros Recursos
-                </a>
-                <a href="../logout.php">
-                    <i class="material-icons">exit_to_app</i>
-                    Sair
-                </a>
-            </nav>
-        </aside>
+        </div>
 
-        <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
-
-        <div class="admin-content">
-            <header class="admin-header">
-                <button class="menu-toggle" onclick="toggleSidebar()">
-                    <i class="material-icons">menu</i>
-                </button>
-                <h1>Gerenciar Usuários</h1>
-                <div class="user-area">
-                    <div class="user-icon"><?= strtoupper(substr($_SESSION['user']['nome'], 0, 1)) ?></div>
-                    <span class="user-name"><?= htmlspecialchars($_SESSION['user']['nome']) ?></span>
-                    <a href="../logout.php" class="logout-btn">
-                        <i class="material-icons">exit_to_app</i>
-                        Sair
-                    </a>
+        <!-- Content Area -->
+        <div class="content-area">
+            <?php if (!empty($message)): ?>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <span class="material-icons me-2">check_circle</span>
+                    <?= htmlspecialchars($message) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-            </header>
+            <?php endif; ?>
 
-            <div class="content-area">
-                <?php if (isset($_SESSION["erro"])): ?>
-                    <div class="message message-error">
-                        <?= htmlspecialchars($_SESSION["erro"]) ?>
-                    </div>
-                    <?php unset($_SESSION["erro"]); ?>
-                <?php endif; ?>
-                <?php if (isset($_SESSION["sucesso"])): ?>
-                    <div class="message message-success">
-                        <?= htmlspecialchars($_SESSION["sucesso"]) ?>
-                    </div>
-                    <?php unset($_SESSION["sucesso"]); ?>
-                <?php endif; ?>
-                
-                <!-- Formulário de Adicionar/Editar Usuário -->
-                <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); margin-bottom: 2rem;">
-                    <h3 style="color: var(--primary-color); margin-bottom: 1rem; font-size: 1.25rem; font-weight: 600; border-bottom: 2px solid var(--primary-color); padding-bottom: 0.5rem;">
-                        <span class="material-icons">person_add</span>
-                        <?= $usuario_edicao ? 'Editar Usuário' : 'Adicionar Usuário' ?>
-                    </h3>
-                    
-                    <form method="POST" action="gerenciar_usuarios.php">
-                        <input type="hidden" name="id" value="<?= $usuario_edicao['id'] ?? '' ?>">
-                        <input type="hidden" name="<?= $usuario_edicao ? 'editar_usuario' : 'adicionar_usuario' ?>" value="1">
-                        
-                        <div class="form-group">
-                            <label for="nome">Nome:</label>
-                            <input type="text" id="nome" name="nome" class="form-control" value="<?= htmlspecialchars($usuario_edicao['nome'] ?? '') ?>" required>
+            <?php if (!empty($error)): ?>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <span class="material-icons me-2">error</span>
+                    <?= htmlspecialchars($error) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+
+            <!-- Filtros -->
+            <div class="filters-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5><span class="material-icons me-2">filter_list</span>Filtros</h5>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
+                        <span class="material-icons me-1">person_add</span>
+                        Novo Usuário
+                    </button>
+                </div>
+                <form method="GET" class="filters-form">
+                    <div class="filters-grid">
+                        <div>
+                            <label class="form-label">Nome</label>
+                            <input type="text" name="nome" class="form-control" 
+                                   value="<?= htmlspecialchars($_GET['nome'] ?? '') ?>" 
+                                   placeholder="Buscar por nome">
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="email">E-mail:</label>
-                            <input type="email" id="email" name="email" class="form-control" value="<?= htmlspecialchars($usuario_edicao['email'] ?? '') ?>" required>
+                        <div>
+                            <label class="form-label">E-mail</label>
+                            <input type="email" name="email" class="form-control" 
+                                   value="<?= htmlspecialchars($_GET['email'] ?? '') ?>" 
+                                   placeholder="Buscar por e-mail">
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="senha">Senha<?= $usuario_edicao ? ' (deixe em branco para manter a atual)' : '' ?>:</label>
-                            <input type="password" id="senha" name="senha" class="form-control" <?= $usuario_edicao ? '' : 'required' ?>>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="confirmar_senha">Confirmar Senha:</label>
-                            <input type="password" id="confirmar_senha" name="confirmar_senha" class="form-control" <?= $usuario_edicao ? '' : 'required' ?>>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="tipo">Tipo:</label>
-                            <select id="tipo" name="tipo" class="form-control" required>
-                                <option value="deputado" <?= ($usuario_edicao['tipo'] ?? '') == 'deputado' ? 'selected' : '' ?>>Deputado</option>
-                                <option value="senador" <?= ($usuario_edicao['tipo'] ?? '') == 'senador' ? 'selected' : '' ?>>Senador</option>
-                                <option value="admin" <?= ($usuario_edicao['tipo'] ?? '') == 'admin' ? 'selected' : '' ?>>Administrador</option>
+                        <div>
+                            <label class="form-label">Tipo</label>
+                            <select name="tipo" id="tipo" class="form-control">
+                                <option value="">Todos</option>
+                                <?php foreach ($tipos_usuario as $tipo): ?>
+                                    <option value="<?= htmlspecialchars($tipo) ?>" 
+                                            <?= ($_GET["tipo"] ?? "") === $tipo ? "selected" : "" ?>>
+                                        <?= htmlspecialchars(ucfirst($tipo)) ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
-                        
-                        <div class="form-group" id="admin-privileges-group" style="display: <?= ($usuario_edicao['tipo'] ?? '') == 'admin' ? 'none' : 'block' ?>;">
-                            <label for="is_admin">Privilégios de Administrador:</label>
-                            <select id="is_admin" name="is_admin" class="form-control">
-                                <option value="false" <?= ($usuario_edicao['is_admin'] ?? false) == false ? 'selected' : '' ?>>Não</option>
-                                <option value="true" <?= ($usuario_edicao['is_admin'] ?? false) == true ? 'selected' : '' ?>>Sim</option>
+                        <div>
+                            <label class="form-label">Status</label>
+                            <select name="status" id="status" class="form-control">
+                                <option value="">Todos</option>
+                                <option value="1" <?= ($_GET["status"] ?? "") === "1" ? "selected" : "" ?>>Ativo</option>
+                                <option value="0" <?= ($_GET["status"] ?? "") === "0" ? "selected" : "" ?>>Inativo</option>
                             </select>
                         </div>
-                        
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="material-icons">save</i>
-                                Salvar
-                            </button>
-                            <?php if ($usuario_edicao): ?>
-                                <a href="gerenciar_usuarios.php" class="btn btn-secondary">
-                                    <i class="material-icons">cancel</i>
-                                    Cancelar
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-icons me-1">search</span>
+                            Filtrar
+                        </button>
+                        <a href="gerenciar_usuarios.php" class="btn btn-secondary">
+                            <span class="material-icons me-1">clear</span>
+                            Limpar
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tabela de Usuários -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="material-icons me-2">people</span>
+                    Usuários Cadastrados (<?= number_format($total_usuarios) ?> total)
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>E-mail</th>
+                                    <th>Tipo</th>
+                                    <th>Status</th>
+                                    <th>Criado em</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($usuarios)): ?>
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4">
+                                            <span class="material-icons me-2">info</span>
+                                            Nenhum usuário encontrado
+                                        </td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($usuarios as $usuario): ?>
+                                        <tr>
+                                            <td><?= $usuario['id'] ?></td>
+                                            <td>
+                                                <?= htmlspecialchars($usuario['nome']) ?>
+                                                <?php if ($usuario['is_admin']): ?>
+                                                    <span class="status-badge admin-badge ms-1">Admin</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?= htmlspecialchars($usuario['email']) ?></td>
+                                            <td><?= htmlspecialchars(ucfirst($usuario['tipo'])) ?></td>
+                                            <td>
+                                                <span class="status-badge <?= $usuario['is_user'] ? 'status-active' : 'status-inactive' ?>">
+                                                    <?= $usuario['is_user'] ? 'Ativo' : 'Inativo' ?>
+                                                </span>
+                                            </td>
+                                            <td><?= date('d/m/Y', strtotime($usuario['criado_em'])) ?></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                            onclick="editUser(<?= htmlspecialchars(json_encode($usuario)) ?>)">
+                                                        <span class="material-icons">edit</span>
+                                                    </button>
+                                                    <?php if ($usuario['id'] != $_SESSION['user']['id']): ?>
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                                onclick="deleteUser(<?= $usuario['id'] ?>, '<?= htmlspecialchars($usuario['nome']) ?>')">
+                                                            <span class="material-icons">delete</span>
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Paginação -->
+            <?php if ($total_paginas > 1): ?>
+                <nav class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        <?php if ($pagina_atual > 1): ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
+                                    Anterior
                                 </a>
-                            <?php endif; ?>
+                            </li>
+                        <?php endif; ?>
+
+                        <?php for ($i = max(1, $pagina_atual - 2); $i <= min($total_paginas, $pagina_atual + 2); $i++): ?>
+                            <li class="page-item <?= $i === $pagina_atual ? 'active' : '' ?>">
+                                <a class="page-link" href="?pagina=<?= $i ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
+                                    <?= $i ?>
+                                </a>
+                            </li>
+                        <?php endfor; ?>
+
+                        <?php if ($pagina_atual < $total_paginas): ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($_SERVER['QUERY_STRING']) ? '&' . http_build_query(array_diff_key($_GET, ['pagina' => ''])) : '' ?>">
+                                    Próxima
+                                </a>
+                            </li>
+                        <?php endif; ?>
+                    </ul>
+                </nav>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Modal Criar Usuário -->
+    <div class="modal fade" id="createUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <span class="material-icons me-2">person_add</span>
+                        Novo Usuário
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="action" value="create">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="create_nome" class="form-label">Nome Completo</label>
+                            <input type="text" class="form-control" id="create_nome" name="nome" required>
                         </div>
-                    </form>
-                </div>
-                
-                <!-- Tabela de Usuários -->
-                <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow);">
-                    <h3 style="color: var(--primary-color); margin-bottom: 1rem; font-size: 1.25rem; font-weight: 600; border-bottom: 2px solid var(--primary-color); padding-bottom: 0.5rem;">
-                        <span class="material-icons">people</span>
-                        Usuários Cadastrados
-                    </h3>
-                    
-                    <table class="emendas-table">
-                        <thead>
-                            <tr>
-                                <th>Nome</th>
-                                <th>E-mail</th>
-                                <th>Tipo</th>
-                                <th>Admin</th>
-                                <th>Data Cadastro</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($usuarios as $usuario): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($usuario['nome']) ?></td>
-                                <td><?= htmlspecialchars($usuario['email']) ?></td>
-                                <td>
-                                    <?php 
-                                    switch($usuario['tipo']) {
-                                        case 'admin': echo 'Administrador'; break;
-                                        case 'deputado': echo 'Deputado'; break;
-                                        case 'senador': echo 'Senador'; break;
-                                        default: echo htmlspecialchars($usuario['tipo']); 
-                                    }
-                                    ?>
-                                </td>
-                                <td><?= $usuario['is_admin'] ? 'Sim' : 'Não' ?></td>
-                                <td><?= date('d/m/Y', strtotime($usuario['criado_em'])) ?></td>
-                                <td class="actions-cell">
-                                    <a href="gerenciar_usuarios.php?editar=<?= $usuario['id'] ?>" class="action-link">
-                                        <span class="material-icons" style="font-size: 1.1rem;">edit</span>
-                                        Editar
-                                    </a>
-                                    <form method="POST" action="gerenciar_usuarios.php" style="display: inline;">
-                                        <input type="hidden" name="id" value="<?= $usuario['id'] ?>">
-                                        <button type="submit" name="excluir_usuario" class="action-link danger" onclick="return confirm('Tem certeza que deseja excluir este usuário?')">
-                                            <span class="material-icons" style="font-size: 1.1rem;">delete</span>
-                                            Excluir
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
+                        <div class="mb-3">
+                            <label for="create_email" class="form-label">E-mail</label>
+                            <input type="email" class="form-control" id="create_email" name="email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="create_senha" class="form-label">Senha</label>
+                            <input type="password" class="form-control" id="create_senha" name="senha" required minlength="6">
+                        </div>
+                        <div class="mb-3">
+                            <label for="create_tipo" class="form-label">Tipo</label>
+                            <select name="tipo" id="create_tipo" class="form-control" required>
+                                <option value="">Selecione...</option>
+                                <option value="deputado">Deputado</option>
+                                <option value="senador">Senador</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="create_is_admin" name="is_admin">
+                                <label class="form-check-label" for="create_is_admin">
+                                    Administrador
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-icons me-1">save</span>
+                            Criar Usuário
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
+    <!-- Modal Editar Usuário -->
+    <div class="modal fade" id="editUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <span class="material-icons me-2">edit</span>
+                        Editar Usuário
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="id" id="edit_id">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="edit_nome" class="form-label">Nome Completo</label>
+                            <input type="text" class="form-control" id="edit_nome" name="nome" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_email" class="form-label">E-mail</label>
+                            <input type="email" class="form-control" id="edit_email" name="email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_senha" class="form-label">Nova Senha (deixe em branco para manter)</label>
+                            <input type="password" class="form-control" id="edit_senha" name="senha" minlength="6">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_tipo" class="form-label">Tipo</label>
+                            <select name="tipo" id="edit_tipo" class="form-control" required>
+                                <option value="">Selecione...</option>
+                                <option value="deputado">Deputado</option>
+                                <option value="senador">Senador</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="edit_is_admin" name="is_admin">
+                                <label class="form-check-label" for="edit_is_admin">
+                                    Administrador
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="edit_is_user" name="is_user">
+                                <label class="form-check-label" for="edit_is_user">
+                                    Usuário Ativo
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-icons me-1">save</span>
+                            Salvar Alterações
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form para deletar (oculto) -->
+    <form id="deleteForm" method="POST" action="gerenciar_usuarios.php" style="display: none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="id" id="delete_id">
+    </form>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Menu Toggle para mobile
-        const menuToggle = document.querySelector('.menu-toggle');
-        const sidebar = document.getElementById('sidebar');
-        
-        menuToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('active');
-        });
-        
-        // Fechar menu ao clicar fora (para mobile)
-        document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 992 && !sidebar.contains(e.target) && e.target !== menuToggle) {
-                sidebar.classList.remove('active');
-            }
-        });
-
-        // Validação de senha no formulário
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const senha = document.getElementById('senha').value;
-            const confirmarSenha = document.getElementById('confirmar_senha').value;
-            const isEdit = <?= $usuario_edicao ? 'true' : 'false' ?>;
-            
-            // Apenas validar se for adição ou se senha foi preenchida na edição
-            if ((!isEdit || senha) && senha !== confirmarSenha) {
-                alert('As senhas não coincidem!');
-                e.preventDefault();
-                return false;
-            }
-            
-            if (!isEdit && senha.length < 8) {
-                alert('A senha deve ter pelo menos 8 caracteres!');
-                e.preventDefault();
-                return false;
-            }
-        });
-
-        // Controlar visibilidade do campo de privilégios de admin
-        document.getElementById('tipo').addEventListener('change', function() {
-            const adminGroup = document.getElementById('admin-privileges-group');
-            if (this.value === 'admin') {
-                adminGroup.style.display = 'none';
-                document.getElementById('is_admin').value = 'true';
-            } else {
-                adminGroup.style.display = 'block';
-            }
-        });
-
-        // Inicializar na carga da página
+        // Menu toggle responsivo
         document.addEventListener('DOMContentLoaded', function() {
-            const tipoSelect = document.getElementById('tipo');
-            if (tipoSelect && tipoSelect.value === 'admin') {
-                document.getElementById('admin-privileges-group').style.display = 'none';
+            const menuToggle = document.getElementById('menuToggle');
+            const sidebar = document.getElementById('sidebar');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+            menuToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('show');
+                sidebarOverlay.classList.toggle('show');
+            });
+
+            sidebarOverlay.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarOverlay.classList.remove('show');
+            });
+
+            // Fechar sidebar ao clicar em link (mobile)
+            const sidebarLinks = sidebar.querySelectorAll('a');
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('show');
+                        sidebarOverlay.classList.remove('show');
+                    }
+                });
+            });
+        });
+
+        // Funções de usuário
+        function editUser(user) {
+            document.getElementById('edit_id').value = user.id;
+            document.getElementById('edit_nome').value = user.nome;
+            document.getElementById('edit_email').value = user.email;
+            document.getElementById('edit_tipo').value = user.tipo;
+            document.getElementById('edit_is_admin').checked = user.is_admin == 1;
+            document.getElementById('edit_is_user').checked = user.is_user == 1;
+            
+            new bootstrap.Modal(document.getElementById('editUserModal')).show();
+        }
+
+        function deleteUser(id, nome) {
+            if (confirm(`Tem certeza que deseja deletar o usuário "${nome}"?`)) {
+                document.getElementById('delete_id').value = id;
+                document.getElementById('deleteForm').submit();
             }
+        }
+
+        // Limpar modais ao fechar
+        document.addEventListener('DOMContentLoaded', function() {
+            const modals = document.querySelectorAll('.modal');
+            modals.forEach(modal => {
+                modal.addEventListener('hidden.bs.modal', function() {
+                    const form = modal.querySelector('form');
+                    if (form) form.reset();
+                });
+            });
         });
     </script>
 </body>

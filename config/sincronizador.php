@@ -1,4 +1,6 @@
+
 <?php
+// \sicef-caderno-de-emendas\config\sincronizador.php
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -21,27 +23,7 @@ class SincronizadorEmendas {
             
             $spreadsheet = IOFactory::load($this->arquivo);
             $sheet = $spreadsheet->getActiveSheet();
-            
             $this->pdo->beginTransaction();
-            
-            $stmtInsert = $this->pdo->prepare("
-                INSERT INTO emendas (
-                    tipo_emenda, eixo_tematico, orgao, objeto_intervencao, ods, valor,
-                    justificativa, regionalizacao, unidade_orcamentaria, programa, 
-                    acao, categoria_economica, hash_linha
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            
-            $stmtUpdate = $this->pdo->prepare("
-                UPDATE emendas SET
-                    tipo_emenda = ?, eixo_tematico = ?, orgao = ?, objeto_intervencao = ?, 
-                    ods = ?, valor = ?, justificativa = ?, regionalizacao = ?,
-                    unidade_orcamentaria = ?, programa = ?, acao = ?, categoria_economica = ?,
-                    atualizado_em = CURRENT_TIMESTAMP
-                WHERE hash_linha = ?
-            ");
-            
-            $stmtCheck = $this->pdo->prepare("SELECT id FROM emendas WHERE hash_linha = ?");
             
             $total = 0;
             $novos = 0;
@@ -53,58 +35,82 @@ class SincronizadorEmendas {
                     $cells[] = $cell->getValue();
                 }
                 
-                if (empty($cells[0])) continue;
+                // Verifica se a linha está vazia (pelo menos o primeiro campo)
+                if (count($cells) < 12 || empty(trim((string)$cells[0]))) continue;
                 
                 $total++;
                 
-                $tipo = $cells[0] ?? '';
-                $eixo = $cells[1] ?? '';
-                $orgao = $cells[2] ?? '';
-                $objeto = $cells[3] ?? '';
-                $ods = $cells[4] ?? '';
-                $valor = str_replace(['.', ','], ['', '.'], $cells[10] ?? '0');
-                $justificativa = $cells[11] ?? '';
-                $regionalizacao = $cells[5] ?? '';
-                $unidade = $cells[6] ?? '';
-                $programa = $cells[7] ?? '';
-                $acao = $cells[8] ?? '';
-                $categoria = $cells[9] ?? '';
+                // Mapear colunas corretamente conforme planilha Excel
+                $tipo = isset($cells[0]) ? (string)$cells[0] : '';
+                $eixo = isset($cells[1]) ? (string)$cells[1] : '';
+                $orgao = isset($cells[2]) ? (string)$cells[2] : '';
+                $objeto = isset($cells[3]) ? (string)$cells[3] : '';
+                $ods = isset($cells[4]) ? (string)$cells[4] : '';
+                $regionalizacao = isset($cells[5]) ? (string)$cells[5] : '';
+                $unidade = isset($cells[6]) ? (string)$cells[6] : '';
+                $programa = isset($cells[7]) ? (string)$cells[7] : '';
+                $acao = isset($cells[8]) ? (string)$cells[8] : '';
+                $categoria = isset($cells[9]) ? (string)$cells[9] : '';
+                $valor_str = isset($cells[10]) ? (string)$cells[10] : '0';
+                $justificativa = isset($cells[11]) ? (string)$cells[11] : '';
                 
-                $hash = hash('sha256', implode('|', [
-                    $tipo, $eixo, $orgao, $objeto, $ods, $valor, $justificativa,
-                    $regionalizacao, $unidade, $programa, $acao, $categoria
-                ]));
+                // Processar valor - remover caracteres não numéricos e converter para formato decimal
+                $valor = $this->processarValor($valor_str);
                 
+                // Calcular hash da linha para identificação única
+                $hash = md5($tipo . $eixo . $orgao . $objeto . $ods . $valor . $justificativa . $regionalizacao . $unidade . $programa . $acao . $categoria);
+                
+                // Verificar se registro já existe pelo hash
+                $stmtCheck = $this->pdo->prepare("SELECT id FROM emendas WHERE hash_linha = ?");
                 $stmtCheck->execute([$hash]);
-                $existente = $stmtCheck->fetch();
                 
-                if ($existente) {
+                if ($stmtCheck->fetch()) {
+                    // Update existing record
+                    $stmtUpdate = $this->pdo->prepare("
+                        UPDATE emendas SET 
+                            tipo_emenda = ?, eixo_tematico = ?, orgao = ?, objeto_intervencao = ?, 
+                            ods = ?, valor = ?, justificativa = ?, regionalizacao = ?, 
+                            unidade_orcamentaria = ?, programa = ?, acao = ?, categoria_economica = ?, 
+                            valor_pretendido = ?, atualizado_em = NOW() 
+                        WHERE hash_linha = ?");
                     $stmtUpdate->execute([
-                        $tipo, $eixo, $orgao, $objeto, $ods, $valor, $justificativa,
-                        $regionalizacao, $unidade, $programa, $acao, $categoria, $hash
+                        $tipo, $eixo, $orgao, $objeto, $ods, $valor, $justificativa, 
+                        $regionalizacao, $unidade, $programa, $acao, $categoria, $valor, $hash
                     ]);
                     $atualizados++;
                 } else {
+                    // Insert new record with proper data types
+                    $stmtInsert = $this->pdo->prepare("
+                        INSERT INTO emendas (
+                            tipo_emenda, eixo_tematico, orgao, objeto_intervencao, ods, valor, 
+                            justificativa, regionalizacao, unidade_orcamentaria, programa, acao, 
+                            categoria_economica, hash_linha, valor_pretendido, criado_em, atualizado_em
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
                     $stmtInsert->execute([
-                        $tipo, $eixo, $orgao, $objeto, $ods, $valor, $justificativa,
-                        $regionalizacao, $unidade, $programa, $acao, $categoria, $hash
+                        $tipo, $eixo, $orgao, $objeto, $ods, $valor, $justificativa, 
+                        $regionalizacao, $unidade, $programa, $acao, $categoria, $hash, $valor
                     ]);
                     $novos++;
                 }
             }
             
-            $this->registrarSincronizacao($total, $novos, $atualizados, 'sucesso');
+            // Registrar sincronização na tabela de log
+            $stmtLog = $this->pdo->prepare("
+                INSERT INTO sincronizacoes (data_hora, total_registros, novos_registros, registros_atualizados, status, mensagem)
+                VALUES (NOW(), ?, ?, ?, 'sucesso', ?)");
+            $mensagem = "Sincronização concluída com sucesso";
+            $stmtLog->execute([$total, $novos, $atualizados, $mensagem]);
+            
             $this->pdo->commit();
             
             return [
                 'success' => true,
-                'message' => "Sincronização concluída. Total: $total, Novos: $novos, Atualizados: $atualizados"
+                'message' => "Sincronização concluída! Total: $total, Novos: $novos, Atualizados: $atualizados"
             ];
             
         } catch (Exception $e) {
             $this->pdo->rollBack();
-            $this->registrarSincronizacao($total ?? 0, $novos ?? 0, $atualizados ?? 0, 'erro', $e->getMessage());
-            
+            error_log("Erro na sincronização: " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => "Erro na sincronização: " . $e->getMessage()
@@ -112,13 +118,14 @@ class SincronizadorEmendas {
         }
     }
     
-    private function registrarSincronizacao($total, $novos, $atualizados, $status, $mensagem = null) {
-        $stmt = $this->pdo->prepare("
-            INSERT INTO sincronizacoes 
-            (total_registros, novos_registros, registros_atualizados, status, mensagem)
-            VALUES (?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([$total, $novos, $atualizados, $status, $mensagem]);
+    private function processarValor($valor_str) {
+        // Remove caracteres não numéricos exceto vírgula e ponto
+        $valor_str = preg_replace('/[^\d,.]/', '', $valor_str);
+        
+        // Converte vírgula para ponto (formato brasileiro para decimal)
+        $valor_str = str_replace(',', '.', $valor_str);
+        
+        // Converte para float
+        return (float)$valor_str;
     }
 }
-?>

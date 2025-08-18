@@ -1,521 +1,769 @@
+
 <?php
+// SICEF-caderno-de-emendas/public/admin/relatorios.php
 session_start();
-if (!isset($_SESSION['user']) || !$_SESSION['user']['is_admin']) {
-    header('Location: ../login.php');
+if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    header("Location: ../login.php");
     exit;
 }
 
-require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../../vendor/autoload.php";
 
-// Obter dados para relatórios
-$emendas_por_tipo = $pdo->query("SELECT tipo_emenda, COUNT(*) as total FROM emendas GROUP BY tipo_emenda")->fetchAll(PDO::FETCH_ASSOC);
-$emendas_por_eixo = $pdo->query("SELECT eixo_tematico, COUNT(*) as total FROM emendas GROUP BY eixo_tematico ORDER BY total DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
-$emendas_por_ano = $pdo->query("SELECT EXTRACT(YEAR FROM criado_em) as ano, COUNT(*) as total FROM emendas GROUP BY ano ORDER BY ano DESC")->fetchAll(PDO::FETCH_ASSOC);
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-// Obter estatísticas gerais
-$total_emendas = $pdo->query("SELECT COUNT(*) as total FROM emendas")->fetch()['total'];
-$total_usuarios = $pdo->query("SELECT COUNT(*) as total FROM usuarios")->fetch()['total'];
-$ano_atual = date('Y');
-$emendas_ano_atual = $pdo->query("SELECT COUNT(*) as total FROM emendas WHERE EXTRACT(YEAR FROM criado_em) = $ano_atual")->fetch()['total'];
+// Contadores para badges
+$stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
+$solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
 
-// Determinar cores do usuário baseado no tipo
-$user_colors = [
-    'primary' => '#6f42c1',
-    'secondary' => '#e83e8c',
-    'accent' => '#fd7e14'
-];
+$stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
+$qtde_sugestoes_pendentes = $stmt_sugestoes->fetchColumn();
 
-if (isset($_SESSION["user"]["tipo"])) {
-    switch ($_SESSION["user"]["tipo"]) {
-        case 'Deputado':
-            $user_colors = [
-                'primary' => '#018bd2',
-                'secondary' => '#51ae32',
-                'accent' => '#fdfefe'
-            ];
-            break;
-        case 'Senador':
-            $user_colors = [
-                'primary' => '#51b949',
-                'secondary' => '#0094db',
-                'accent' => '#fefefe'
-            ];
-            break;
-        case 'Administrador':
-            $user_colors = [
-                'primary' => '#6f42c1',
-                'secondary' => '#e83e8c',
-                'accent' => '#fd7e14'
-            ];
-            break;
+// Carregar dados para relatórios
+try {
+    // Estatísticas gerais
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM emendas");
+    $stmt->execute();
+    $total_emendas = $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM usuarios");
+    $stmt->execute();
+    $total_usuarios = $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM sugestoes_emendas WHERE status = 'pendente'");
+    $stmt->execute();
+    $sugestoes_pendentes = $stmt->fetchColumn();
+
+    // Emendas por ano
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM emendas WHERE EXTRACT(YEAR FROM criado_em) = ?");
+    $stmt->execute([date('Y')]);
+    $emendas_ano_atual = $stmt->fetchColumn();
+
+    // Emendas por tipo
+    $stmt = $pdo->prepare("SELECT tipo_emenda, COUNT(*) as total FROM emendas WHERE tipo_emenda IS NOT NULL GROUP BY tipo_emenda ORDER BY total DESC");
+    $stmt->execute();
+    $emendas_por_tipo = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Top eixos temáticos
+    $stmt = $pdo->prepare("SELECT eixo_tematico, COUNT(*) as total FROM emendas WHERE eixo_tematico IS NOT NULL GROUP BY eixo_tematico ORDER BY total DESC LIMIT 10");
+    $stmt->execute();
+    $top_eixos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Emendas por ano (histórico)
+    $stmt = $pdo->prepare("SELECT EXTRACT(YEAR FROM criado_em) as ano, COUNT(*) as total FROM emendas GROUP BY ano ORDER BY ano DESC LIMIT 5");
+    $stmt->execute();
+    $emendas_por_ano = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Top órgãos
+    $stmt = $pdo->prepare("SELECT orgao, COUNT(*) as total FROM emendas WHERE orgao IS NOT NULL GROUP BY orgao ORDER BY total DESC LIMIT 8");
+    $stmt->execute();
+    $top_orgaos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Valores
+    $stmt = $pdo->prepare("SELECT SUM(valor) as total_valor FROM emendas WHERE valor IS NOT NULL");
+    $stmt->execute();
+    $total_valor = $stmt->fetchColumn() ?: 0;
+
+    $stmt = $pdo->prepare("SELECT AVG(valor) as media_valor FROM emendas WHERE valor IS NOT NULL AND valor > 0");
+    $stmt->execute();
+    $media_valor = $stmt->fetchColumn() ?: 0;
+
+} catch (PDOException $e) {
+    error_log("Erro ao carregar dados dos relatórios: " . $e->getMessage());
+    $total_emendas = $total_usuarios = $sugestoes_pendentes = $emendas_ano_atual = 0;
+    $emendas_por_tipo = $top_eixos = $emendas_por_ano = $top_orgaos = [];
+    $total_valor = $media_valor = 0;
+}
+
+// Processar exportação
+if (isset($_GET['export'])) {
+    try {
+        $tipo_export = $_GET['export'];
+        $formato = $_GET['formato'] ?? 'excel';
+
+        switch ($tipo_export) {
+            case 'emendas':
+                $stmt = $pdo->prepare("SELECT * FROM emendas ORDER BY criado_em DESC");
+                $stmt->execute();
+                $dados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $filename = 'relatorio_emendas_' . date('Y-m-d');
+                $headers = ['ID', 'Tipo', 'Eixo Temático', 'Órgão', 'Objeto', 'ODS', 'Valor', 'Justificativa', 'Regionalização', 'Unidade Orçamentária', 'Programa', 'Ação', 'Categoria Econômica', 'Criado em'];
+                break;
+
+            case 'usuarios':
+                $stmt = $pdo->prepare("SELECT id, nome, email, tipo, is_admin, is_user, criado_em FROM usuarios ORDER BY nome");
+                $stmt->execute();
+                $dados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $filename = 'relatorio_usuarios_' . date('Y-m-d');
+                $headers = ['ID', 'Nome', 'E-mail', 'Tipo', 'Admin', 'Ativo', 'Criado em'];
+                break;
+
+            case 'sugestoes':
+                $stmt = $pdo->prepare("
+                    SELECT s.id, u.nome as usuario, e.objeto_intervencao, s.campo_sugerido, 
+                           s.valor_sugerido, s.status, s.criado_em, s.respondido_em
+                    FROM sugestoes_emendas s 
+                    JOIN usuarios u ON s.usuario_id = u.id 
+                    JOIN emendas e ON s.emenda_id = e.id 
+                    ORDER BY s.criado_em DESC
+                ");
+                $stmt->execute();
+                $dados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $filename = 'relatorio_sugestoes_' . date('Y-m-d');
+                $headers = ['ID', 'Usuário', 'Emenda', 'Campo', 'Valor Sugerido', 'Status', 'Criado em', 'Respondido em'];
+                break;
+
+            default:
+                throw new Exception('Tipo de relatório inválido');
+        }
+
+        if ($formato === 'excel') {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            
+            // Cabeçalhos
+            $sheet->fromArray($headers, null, 'A1');
+            
+            // Estilizar cabeçalhos
+            $headerRange = 'A1:' . chr(64 + count($headers)) . '1';
+            $sheet->getStyle($headerRange)->getFont()->setBold(true);
+            $sheet->getStyle($headerRange)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+            $sheet->getStyle($headerRange)->getFill()->getStartColor()->setRGB('00796B');
+            $sheet->getStyle($headerRange)->getFont()->getColor()->setRGB('FFFFFF');
+            
+            // Dados
+            $row = 2;
+            foreach ($dados as $item) {
+                $sheet->fromArray(array_values($item), null, "A$row");
+                $row++;
+            }
+            
+            // Auto-ajustar colunas
+            foreach (range('A', chr(64 + count($headers))) as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            
+            $writer = new Xlsx($spreadsheet);
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header("Content-Disposition: attachment;filename=\"{$filename}.xlsx\"");
+            header('Cache-Control: max-age=0');
+            $writer->save('php://output');
+            exit;
+        }
+
+    } catch (Exception $e) {
+        $_SESSION['error'] = 'Erro ao gerar relatório: ' . $e->getMessage();
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relatórios - SICEF</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <title>Relatórios - SICEF Admin</title>
+    <!-- Bootstrap e Material Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --primary-color: <?= $user_colors['primary'] ?>;
-            --secondary-color: <?= $user_colors['secondary'] ?>;
-            --accent-color: <?= $user_colors['accent'] ?>;
-            --dark-color: #2c3e50;
-            --light-color: #f8f9fa;
-            --border-color: #e0e0e0;
-            --error-color: #e74c3c;
-            --success-color: #2ecc71;
+            --primary-color: #00796B;
+            --secondary-color: #009688;
+            --accent-color: #FFC107;
+            --light-color: #ECEFF1;
+            --dark-color: #263238;
+            --sidebar-width: 280px;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
             overflow-x: hidden;
         }
-        
-        .admin-container {
-            display: flex;
-            min-height: 100vh;
-        }
-        
-        /* Sidebar */
-        .admin-sidebar {
-            width: 250px;
-            background-color: var(--dark-color);
-            color: white;
-            padding: 1.5rem 0;
+
+        /* Sidebar responsivo */
+        .sidebar {
             position: fixed;
+            top: 0;
+            left: 0;
             height: 100vh;
-            transition: all 0.3s;
-            z-index: 100;
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            z-index: 1000;
+            transition: transform 0.3s ease;
             overflow-y: auto;
         }
-        
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+        }
+
         .sidebar-header {
-            padding: 0 1.5rem 1.5rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        
-        .sidebar-header h2 {
-            font-size: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+
+        .sidebar-header h4 {
+            margin: 0;
+            font-weight: 600;
         }
-        
+
+        .sidebar-header p {
+            margin: 0;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
         .sidebar-menu {
             padding: 1rem 0;
         }
-        
+
         .sidebar-menu a {
             display: flex;
             align-items: center;
             padding: 0.75rem 1.5rem;
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            transition: all 0.3s;
-            gap: 0.75rem;
-        }
-        
-        .sidebar-menu a:hover, .sidebar-menu a.active {
-            background-color: rgba(255,255,255,0.1);
             color: white;
+            text-decoration: none;
+            transition: background-color 0.3s;
         }
-        
-        .sidebar-menu i {
-            font-size: 1.25rem;
+
+        .sidebar-menu a:hover, .sidebar-menu a.active {
+            background-color: rgba(255, 255, 255, 0.1);
         }
-        
-        /* Main Content */
-        .admin-content {
-            flex: 1;
-            margin-left: 250px;
-            transition: all 0.3s;
-            width: calc(100% - 250px);
+
+        .sidebar-menu .material-icons {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
         }
-        
-        /* Header */
-        .admin-header {
+
+        .badge {
+            margin-left: auto;
+        }
+
+        /* Main content responsivo */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+
+        .main-content.expanded {
+            margin-left: 0;
+        }
+
+        .top-bar {
             background: white;
-            padding: 1rem 2rem;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 90;
+            flex-wrap: wrap;
         }
-        
-        .admin-header h1 {
-            font-size: 1.5rem;
-            color: var(--dark-color);
-        }
-        
+
         .menu-toggle {
             display: none;
             background: none;
             border: none;
-            color: var(--dark-color);
             font-size: 1.5rem;
+            color: var(--primary-color);
             cursor: pointer;
         }
-        
-        .user-area {
+
+        .user-info {
             display: flex;
             align-items: center;
             gap: 1rem;
+            margin-left: auto;
         }
-        
-        .user-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: var(--primary-color);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            font-size: 1.2rem;
-        }
-        
-        .user-name {
-            font-weight: 500;
-        }
-        
-        .logout-btn {
-            color: var(--dark-color);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            transition: all 0.3s;
-        }
-        
-        .logout-btn:hover {
-            background-color: var(--light-color);
-        }
-        
-        /* Content Area */
+
         .content-area {
             padding: 2rem;
-            max-width: 100%;
         }
-        
-        /* Stats Grid */
+
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
-        
+
         .stat-card {
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        
-        .stat-card h3 {
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-            font-size: 1.1rem;
-            font-weight: 600;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
-            gap: 0.5rem;
         }
-        
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--dark-color);
-            margin-bottom: 0.5rem;
+
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
         }
-        
-        .stat-description {
-            color: #666;
-            font-size: 0.9rem;
+
+        .stat-icon.primary {
+            background: rgba(0, 121, 107, 0.1);
+            color: var(--primary-color);
         }
-        
-        .chart-container {
-            background: white;
-            border-radius: 8px;
-            padding: 1.5rem;
+
+        .stat-icon.success {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+        }
+
+        .stat-icon.warning {
+            background: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+        }
+
+        .stat-icon.info {
+            background: rgba(23, 162, 184, 0.1);
+            color: #17a2b8;
+        }
+
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            height: 400px;
         }
-        
-        .chart-container h3 {
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-            font-size: 1.1rem;
+
+        .card-header {
+            background: var(--primary-color);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
-        
-        .chart-wrapper {
-            height: 350px;
-            position: relative;
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
         }
-        
-        /* Mobile Responsiveness */
+
+        .btn-primary:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        /* Responsividade mobile */
         @media (max-width: 768px) {
-            .admin-sidebar {
+            .sidebar {
                 transform: translateX(-100%);
             }
-            
-            .admin-sidebar.active {
+
+            .sidebar.show {
                 transform: translateX(0);
             }
-            
-            .admin-content {
+
+            .main-content {
                 margin-left: 0;
-                width: 100%;
             }
-            
+
             .menu-toggle {
                 display: block;
             }
-            
-            .admin-header {
-                padding: 1rem;
+
+            .top-bar {
+                flex-direction: column;
+                gap: 1rem;
             }
-            
+
+            .user-info {
+                margin-left: 0;
+                width: 100%;
+                justify-content: center;
+            }
+
             .content-area {
                 padding: 1rem;
             }
-            
+
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
-            .user-area {
-                gap: 0.5rem;
-            }
-            
-            .user-name {
-                display: none;
-            }
         }
-        
+
         /* Overlay para mobile */
         .sidebar-overlay {
-            display: none;
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            z-index: 99;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            display: none;
         }
-        
-        .sidebar-overlay.active {
+
+        .sidebar-overlay.show {
             display: block;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+
+        .export-section {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .export-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .export-card {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+
+        .export-card:hover {
+            border-color: var(--primary-color);
+        }
+
+        .export-icon {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
         }
     </style>
 </head>
 <body>
-    <div class="admin-container">
-        <!-- Sidebar -->
-        <nav class="admin-sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>
-                    <i class="material-icons">admin_panel_settings</i>
-                    Painel Admin
-                </h2>
-            </div>
-            <div class="sidebar-menu">
-                <a href="admin_dashboard.php">
-                    <i class="material-icons">dashboard</i>
-                    Dashboard
-                </a>
-                <a href="gerenciar_usuarios.php">
-                    <i class="material-icons">people</i>
-                    Usuários
-                </a>
-                <a href="relatorios.php" class="active">
-                    <i class="material-icons">assessment</i>
-                    Relatórios
-                </a>
-                <a href="configuracoes.php">
-                    <i class="material-icons">settings</i>
-                    Configurações
-                </a>
-                <a href="#" onclick="showOtherResources()">
-                    <i class="material-icons">more_horiz</i>
-                    Outros Recursos
-                </a>
-            </div>
+    <!-- Overlay para mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar melhorado -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h4>SICEF Admin</h4>
+            <p>Painel Administrativo</p>
+        </div>
+        <nav class="sidebar-menu">
+            <a href="admin_dashboard.php">
+                <span class="material-icons">dashboard</span>
+                Dashboard
+            </a>
+            <a href="gerenciar_usuarios.php">
+                <span class="material-icons">people</span>
+                Usuários
+            </a>
+            <a href="solicitacoes_acesso.php">
+                <span class="material-icons">person_add</span>
+                Solicitações
+                <?php if ($solicitacoes_pendentes > 0): ?>
+                    <span class="badge bg-warning"><?= $solicitacoes_pendentes ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="sugestoes.php">
+                <span class="material-icons">lightbulb</span>
+                Sugestões
+                <?php if ($qtde_sugestoes_pendentes > 0): ?>
+                    <span class="badge bg-info"><?= $qtde_sugestoes_pendentes ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="relatorios.php" class="active">
+                <span class="material-icons">assessment</span>
+                Relatórios
+            </a>
+            <a href="configuracoes.php">
+                <span class="material-icons">settings</span>
+                Configurações
+            </a>
+            <a href="../logout.php">
+                <span class="material-icons">logout</span>
+                Sair
+            </a>
         </nav>
+    </div>
 
-        <!-- Overlay para mobile -->
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+    <!-- Main Content -->
+    <div class="main-content" id="mainContent">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <button class="menu-toggle" id="menuToggle">
+                <span class="material-icons">menu</span>
+            </button>
+            <h2>Relatórios e Estatísticas</h2>
+            <div class="user-info">
+                <span class="material-icons">account_circle</span>
+                <span>Olá, <?= htmlspecialchars($_SESSION['user']['nome']) ?></span>
+            </div>
+        </div>
 
-        <!-- Main Content -->
-        <main class="admin-content">
-            <!-- Header -->
-            <header class="admin-header">
-                <div style="display: flex; align-items: center; gap: 1rem;">
-                    <button class="menu-toggle" onclick="toggleSidebar()">
-                        <i class="material-icons">menu</i>
-                    </button>
-                    <h1>Relatórios e Estatísticas</h1>
+        <!-- Content Area -->
+        <div class="content-area">
+            <?php if (isset($_SESSION['error'])): ?>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <span class="material-icons me-2">error</span>
+                    <?= htmlspecialchars($_SESSION['error']) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-                <div class="user-area">
-                    <div class="user-icon">
-                        <?= strtoupper(substr($_SESSION["user"]["nome"], 0, 1)) ?>
-                    </div>
-                    <span class="user-name"><?= htmlspecialchars($_SESSION["user"]["nome"]) ?></span>
-                    <a href="../logout.php" class="logout-btn">
-                        <i class="material-icons">logout</i>
-                        Sair
-                    </a>
-                </div>
-            </header>
+                <?php unset($_SESSION['error']); ?>
+            <?php endif; ?>
 
-            <!-- Content Area -->
-            <div class="content-area">
-                <!-- Cards com estatísticas -->
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <h3><i class="material-icons">list_alt</i> Total de Emendas</h3>
-                        <div class="stat-value"><?= $total_emendas ?></div>
-                        <div class="stat-description">Emendas cadastradas no sistema</div>
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon primary">
+                        <span class="material-icons">description</span>
                     </div>
-                    
-                    <div class="stat-card">
-                        <h3><i class="material-icons">people</i> Total de Usuários</h3>
-                        <div class="stat-value"><?= $total_usuarios ?></div>
-                        <div class="stat-description">Usuários cadastrados no sistema</div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <h3><i class="material-icons">assessment</i> Emendas em <?= $ano_atual ?></h3>
-                        <div class="stat-value"><?= $emendas_ano_atual ?></div>
-                        <div class="stat-description">Emendas cadastradas este ano</div>
+                    <div>
+                        <h3><?= number_format($total_emendas) ?></h3>
+                        <p>Total de Emendas</p>
                     </div>
                 </div>
-                
-                <!-- Gráficos -->
-                <div class="chart-container">
-                    <h3><i class="material-icons">pie_chart</i> Distribuição por Tipo de Emenda</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="tipoEmendaChart"></canvas>
+                <div class="stat-card">
+                    <div class="stat-icon success">
+                        <span class="material-icons">people</span>
+                    </div>
+                    <div>
+                        <h3><?= number_format($total_usuarios) ?></h3>
+                        <p>Usuários Cadastrados</p>
                     </div>
                 </div>
-                
-                <div class="chart-container">
-                    <h3><i class="material-icons">bar_chart</i> Top 5 Eixos Temáticos</h3>
-                    <div class="chart-wrapper">
+                <div class="stat-card">
+                    <div class="stat-icon warning">
+                        <span class="material-icons">lightbulb</span>
+                    </div>
+                    <div>
+                        <h3><?= number_format($sugestoes_pendentes) ?></h3>
+                        <p>Sugestões Pendentes</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon info">
+                        <span class="material-icons">calendar_today</span>
+                    </div>
+                    <div>
+                        <h3><?= number_format($emendas_ano_atual) ?></h3>
+                        <p>Emendas em <?= date('Y') ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Valores -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="stat-card">
+                        <div class="stat-icon success">
+                            <span class="material-icons">attach_money</span>
+                        </div>
+                        <div>
+                            <h3>R$ <?= number_format($total_valor, 2, ',', '.') ?></h3>
+                            <p>Valor Total das Emendas</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="stat-card">
+                        <div class="stat-icon info">
+                            <span class="material-icons">trending_up</span>
+                        </div>
+                        <div>
+                            <h3>R$ <?= number_format($media_valor, 2, ',', '.') ?></h3>
+                            <p>Valor Médio por Emenda</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráficos -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="material-icons me-2">pie_chart</span>
+                            Emendas por Tipo
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="tipoChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="material-icons me-2">bar_chart</span>
+                            Emendas por Ano
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="anoChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Eixos Temáticos -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="material-icons me-2">category</span>
+                    Top 10 Eixos Temáticos
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
                         <canvas id="eixosChart"></canvas>
                     </div>
                 </div>
-                
-                <div class="chart-container">
-                    <h3><i class="material-icons">show_chart</i> Emendas por Ano</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="anosChart"></canvas>
+            </div>
+
+            <!-- Top Órgãos -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="material-icons me-2">business</span>
+                    Top 8 Órgãos
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="orgaosChart"></canvas>
                     </div>
                 </div>
             </div>
-        </main>
+
+            <!-- Exportação de Relatórios -->
+            <div class="export-section">
+                <h5><span class="material-icons me-2">download</span>Exportar Relatórios</h5>
+                <div class="export-grid">
+                    <div class="export-card">
+                        <div class="export-icon">
+                            <span class="material-icons">description</span>
+                        </div>
+                        <h6>Relatório de Emendas</h6>
+                        <p>Exportar todas as emendas cadastradas no sistema</p>
+                        <a href="?export=emendas&formato=excel" class="btn btn-primary">
+                            <span class="material-icons me-1">download</span>
+                            Baixar Excel
+                        </a>
+                    </div>
+                    <div class="export-card">
+                        <div class="export-icon">
+                            <span class="material-icons">people</span>
+                        </div>
+                        <h6>Relatório de Usuários</h6>
+                        <p>Exportar lista completa de usuários do sistema</p>
+                        <a href="?export=usuarios&formato=excel" class="btn btn-primary">
+                            <span class="material-icons me-1">download</span>
+                            Baixar Excel
+                        </a>
+                    </div>
+                    <div class="export-card">
+                        <div class="export-icon">
+                            <span class="material-icons">lightbulb</span>
+                        </div>
+                        <h6>Relatório de Sugestões</h6>
+                        <p>Exportar histórico de sugestões dos usuários</p>
+                        <a href="?export=sugestoes&formato=excel" class="btn btn-primary">
+                            <span class="material-icons me-1">download</span>
+                            Baixar Excel
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function toggleSidebar() {
+        // Menu toggle responsivo
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuToggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        }
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-        function showOtherResources() {
-            alert('Funcionalidade "Outros Recursos" em desenvolvimento.');
-        }
+            menuToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('show');
+                sidebarOverlay.classList.toggle('show');
+            });
 
-        // Dados para os gráficos
-        const tipoEmendaData = {
-            labels: <?= json_encode(array_column($emendas_por_tipo, 'tipo_emenda')) ?>,
-            datasets: [{
-                data: <?= json_encode(array_column($emendas_por_tipo, 'total')) ?>,
-                backgroundColor: [
-                    '<?= $user_colors['primary'] ?>',
-                    '<?= $user_colors['secondary'] ?>',
-                    '<?= $user_colors['accent'] ?>',
-                    '#dc3545',
-                    '#6c757d'
-                ]
-            }]
-        };
-        
-        const eixosData = {
-            labels: <?= json_encode(array_column($emendas_por_eixo, 'eixo_tematico')) ?>,
-            datasets: [{
-                label: 'Número de Emendas',
-                data: <?= json_encode(array_column($emendas_por_eixo, 'total')) ?>,
-                backgroundColor: '<?= $user_colors['primary'] ?>',
-                borderColor: '<?= $user_colors['secondary'] ?>',
-                borderWidth: 1
-            }]
-        };
-        
-        const anosData = {
-            labels: <?= json_encode(array_column($emendas_por_ano, 'ano')) ?>,
-            datasets: [{
-                label: 'Emendas por Ano',
-                data: <?= json_encode(array_column($emendas_por_ano, 'total')) ?>,
-                backgroundColor: '<?= $user_colors['secondary'] ?>',
-                borderColor: '<?= $user_colors['primary'] ?>',
-                borderWidth: 1,
-                fill: true
-            }]
-        };
-        
-        // Inicializar gráficos
-        window.onload = function() {
-            // Gráfico de pizza para tipos de emenda
-            new Chart(document.getElementById('tipoEmendaChart'), {
-                type: 'pie',
-                data: tipoEmendaData,
+            sidebarOverlay.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarOverlay.classList.remove('show');
+            });
+
+            // Fechar sidebar ao clicar em link (mobile)
+            const sidebarLinks = sidebar.querySelectorAll('a');
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('show');
+                        sidebarOverlay.classList.remove('show');
+                    }
+                });
+            });
+
+            // Inicializar gráficos
+            initCharts();
+        });
+
+        function initCharts() {
+            // Gráfico de Emendas por Tipo
+            const tipoCtx = document.getElementById('tipoChart').getContext('2d');
+            new Chart(tipoCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: <?= json_encode(array_column($emendas_por_tipo, 'tipo_emenda')) ?>,
+                    datasets: [{
+                        data: <?= json_encode(array_column($emendas_por_tipo, 'total')) ?>,
+                        backgroundColor: [
+                            '#00796B', '#009688', '#4DB6AC', '#80CBC4', '#B2DFDB',
+                            '#FFC107', '#FF9800', '#FF5722', '#E91E63', '#9C27B0'
+                        ]
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            position: 'right'
+                            position: 'bottom'
                         }
                     }
                 }
             });
-            
-            // Gráfico de barras para eixos temáticos
-            new Chart(document.getElementById('eixosChart'), {
+
+            // Gráfico de Emendas por Ano
+            const anoCtx = document.getElementById('anoChart').getContext('2d');
+            new Chart(anoCtx, {
                 type: 'bar',
-                data: eixosData,
+                data: {
+                    labels: <?= json_encode(array_column($emendas_por_ano, 'ano')) ?>,
+                    datasets: [{
+                        label: 'Emendas',
+                        data: <?= json_encode(array_column($emendas_por_ano, 'total')) ?>,
+                        backgroundColor: '#00796B',
+                        borderColor: '#004D40',
+                        borderWidth: 1
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -526,47 +774,59 @@ if (isset($_SESSION["user"]["tipo"])) {
                     }
                 }
             });
-            
-            // Gráfico de linha para emendas por ano
-            new Chart(document.getElementById('anosChart'), {
-                type: 'line',
-                data: anosData,
+
+            // Gráfico de Top Eixos Temáticos
+            const eixosCtx = document.getElementById('eixosChart').getContext('2d');
+            new Chart(eixosCtx, {
+                type: 'horizontalBar',
+                data: {
+                    labels: <?= json_encode(array_map(function($item) { return substr($item['eixo_tematico'], 0, 30) . '...'; }, $top_eixos)) ?>,
+                    datasets: [{
+                        label: 'Emendas',
+                        data: <?= json_encode(array_column($top_eixos, 'total')) ?>,
+                        backgroundColor: '#009688',
+                        borderColor: '#00796B',
+                        borderWidth: 1
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    indexAxis: 'y',
                     scales: {
-                        y: {
+                        x: {
                             beginAtZero: true
                         }
                     }
                 }
             });
-        };
 
-        // Fechar sidebar ao clicar fora (mobile)
-        document.addEventListener('click', function(event) {
-            const sidebar = document.getElementById('sidebar');
-            const menuToggle = document.querySelector('.menu-toggle');
-            
-            if (window.innerWidth <= 768 && 
-                !sidebar.contains(event.target) && 
-                !menuToggle.contains(event.target) && 
-                sidebar.classList.contains('active')) {
-                toggleSidebar();
-            }
-        });
-
-        // Ajustar layout em redimensionamento
-        window.addEventListener('resize', function() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            
-            if (window.innerWidth > 768) {
-                sidebar.classList.remove('active');
-                overlay.classList.remove('active');
-            }
-        });
+            // Gráfico de Top Órgãos
+            const orgaosCtx = document.getElementById('orgaosChart').getContext('2d');
+            new Chart(orgaosCtx, {
+                type: 'horizontalBar',
+                data: {
+                    labels: <?= json_encode(array_map(function($item) { return substr($item['orgao'], 0, 40) . '...'; }, $top_orgaos)) ?>,
+                    datasets: [{
+                        label: 'Emendas',
+                        data: <?= json_encode(array_column($top_orgaos, 'total')) ?>,
+                        backgroundColor: '#4DB6AC',
+                        borderColor: '#00796B',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    scales: {
+                        x: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
-
