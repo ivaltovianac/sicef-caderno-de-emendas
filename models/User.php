@@ -1,4 +1,24 @@
 <?php
+/**
+ * Gerenciamento de Usuários - SICEF Caderno de Emendas
+ * 
+ * Esta classe é responsável por gerenciar todas as operações relacionadas aos usuários
+ * do sistema SICEF Caderno de Emendas. Inclui funcionalidades para criação, consulta,
+ * atualização e exclusão de usuários, além de autenticação e controle de acesso.
+ * 
+ * Funcionalidades:
+ * - Criação e registro de novos usuários
+ * - Consulta e filtragem de usuários
+ * - Autenticação e verificação de credenciais
+ * - Atualização de dados cadastrais e senha
+ * - Exclusão de usuários
+ * - Controle de status de usuários
+ * 
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
 // sicef-caderno-de-emendas/models/User.php
 
 class User
@@ -10,7 +30,12 @@ class User
         $this->pdo = $pdo;
     }
 
-    // Busca usuário por e-mail (case-insensitive)
+    /**
+     * Busca usuário por e-mail (case-insensitive)
+     * 
+     * @param string $email Email do usuário a ser buscado
+     * @return array|null Retorna os dados do usuário ou null se não encontrado
+     */
     public function findByEmail($email)
     {
         try {
@@ -23,6 +48,12 @@ class User
         }
     }
 
+    /**
+     * Busca usuário por ID
+     * 
+     * @param int $id ID do usuário a ser buscado
+     * @return array|false Retorna os dados do usuário ou false se não encontrado
+     */
     public function findById($id)
     {
         $stmt = $this->pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
@@ -30,6 +61,12 @@ class User
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * Cria um novo usuário no sistema
+     * 
+     * @param array $userData Dados do usuário a ser criado
+     * @return array Resultado da operação com status e mensagem
+     */
     public function create($userData)
     {
         // Validar dados obrigatórios
@@ -51,6 +88,48 @@ class User
             return ['success' => false, 'message' => 'Email já cadastrado.'];
         }
 
+        try {
+            // Hash da senha antes de inserir
+            $hashedPassword = password_hash($userData['senha'], PASSWORD_DEFAULT);
+
+            $stmt = $this->pdo->prepare("
+                INSERT INTO usuarios (nome, email, senha, tipo, is_admin, is_user, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+            ");
+
+            $isAdmin = ($userData['tipo'] === 'admin') ? true : false;
+            $isUser = true;
+
+            if (
+                $stmt->execute([
+                    $userData['nome'],
+                    $userData['email'],
+                    $hashedPassword,
+                    $userData['tipo'],
+                    $isAdmin,
+                    $isUser
+                ])
+            ) {
+                return ['success' => true, 'message' => 'Usuário criado com sucesso', 'id' => $this->pdo->lastInsertId()];
+            } else {
+                return ['success' => false, 'message' => 'Erro ao criar usuário.'];
+            }
+        } catch (PDOException $e) {
+            error_log('User::create erro: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Erro interno do servidor.'];
+        }
+    }
+
+    /**
+     * Obtém todos os usuários com filtros opcionais
+     * 
+     * @param array $filtros Filtros para a consulta
+     * @param int|null $limite Limite de registros retornados
+     * @param int $offset Deslocamento para paginação
+     * @return array Lista de usuários encontrados
+     */
+    public function getAll($filtros = [], $limite = null, $offset = 0)
+    {
         try {
             $sql = "SELECT id, nome, email, tipo, is_admin, is_user, criado_em FROM usuarios";
             $params = [];
@@ -99,40 +178,12 @@ class User
         }
     }
 
-    public function getAll($filtros = [], $limite = null, $offset = 0)
-    {
-        try {
-            // Hash da senha antes de inserir
-            $hashedPassword = password_hash($userData['senha'], PASSWORD_DEFAULT);
-
-            $stmt = $this->pdo->prepare("
-                INSERT INTO usuarios (nome, email, senha, tipo, is_admin, is_user, criado_em) 
-                VALUES (?, ?, ?, ?, ?, ?, NOW())
-            ");
-
-            $isAdmin = ($userData['tipo'] === 'admin') ? true : false;
-            $isUser = true;
-
-            if (
-                $stmt->execute([
-                    $userData['nome'],
-                    $userData['email'],
-                    $hashedPassword,
-                    $userData['tipo'],
-                    $isAdmin,
-                    $isUser
-                ])
-            ) {
-                return ['success' => true, 'message' => 'Usuário criado com sucesso', 'id' => $this->pdo->lastInsertId()];
-            } else {
-                return ['success' => false, 'message' => 'Erro ao criar usuário.'];
-            }
-        } catch (PDOException $e) {
-            error_log('User::create erro: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Erro interno do servidor.'];
-        }
-    }
-
+    /**
+     * Conta o número de usuários com filtros opcionais
+     * 
+     * @param array $filtros Filtros para a contagem
+     * @return int Número de usuários encontrados
+     */
     public function count($filtros = [])
     {
         try {
@@ -164,6 +215,13 @@ class User
         }
     }
 
+    /**
+     * Atualiza a senha de um usuário
+     * 
+     * @param string $email Email do usuário
+     * @param string $newPassword Nova senha
+     * @return bool Resultado da operação
+     */
     public function updatePassword($email, $newPassword)
     {
         try {
@@ -176,6 +234,13 @@ class User
         }
     }
 
+    /**
+     * Atualiza um usuário existente
+     * 
+     * @param int $id ID do usuário a ser atualizado
+     * @param array $data Dados a serem atualizados
+     * @return array Resultado da operação com status e mensagem
+     */
     public function update($id, $data)
     {
         try {
@@ -224,12 +289,25 @@ class User
         }
     }
 
+    /**
+     * Altera o status de um usuário
+     * 
+     * @param int $id ID do usuário
+     * @param bool $status Novo status do usuário
+     * @return bool Resultado da operação
+     */
     public function toggleStatus($id, $status)
     {
         $stmt = $this->pdo->prepare("UPDATE usuarios SET is_user = ? WHERE id = ?");
         return $stmt->execute([$status, $id]);
     }
 
+    /**
+     * Exclui um usuário
+     * 
+     * @param int $id ID do usuário a ser excluído
+     * @return array Resultado da operação com status e mensagem
+     */
     public function delete($id)
     {
         try {

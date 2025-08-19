@@ -1,9 +1,18 @@
-
 <?php
-// sicef-caderno-de-emendas/config/db.php
-// Configurações de conexão com o banco de dados PostgreSQL
+/**
+ * Configuração de Conexão com Banco de Dados - SICEF
+ *
+ * Este arquivo contém as configurações de conexão com o banco de dados PostgreSQL
+ * e funções auxiliares para operações comuns.
+ *
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
 
-// Configurações do banco de dados
+// sicef-caderno-de-emendas/config/db.php
+
+// Carrega configurações do ambiente ou usa valores padrão
 $config = [
     'host' => $_ENV['DB_HOST'] ?? getenv('DB_HOST') ?: 'localhost',
     'db'   => $_ENV['DB_NAME'] ?? getenv('DB_NAME') ?: 'caderno_emendas',
@@ -15,6 +24,7 @@ $config = [
 $appEnv = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?: 'development';
 
 try {
+    // Configuração da conexão PDO com PostgreSQL
     // Removido "charset" do DSN (não suportado em PDO pgsql)
     $dsn = "pgsql:host={$config['host']};port={$config['port']};dbname={$config['db']}";
 
@@ -40,7 +50,15 @@ try {
     }
 }
 
-// Função para executar queries com log de erro
+/**
+ * Executa uma query SQL com tratamento de erros
+ *
+ * @param PDO $pdo Instância da conexão PDO
+ * @param string $sql Comando SQL a ser executado
+ * @param array $params Parâmetros para prepared statements
+ * @return PDOStatement
+ * @throws PDOException
+ */
 function executeQuery($pdo, $sql, $params = []) {
     try {
         $stmt = $pdo->prepare($sql);
@@ -52,7 +70,12 @@ function executeQuery($pdo, $sql, $params = []) {
     }
 }
 
-// Função para sanitizar entrada
+/**
+ * Sanitiza entrada de usuário para prevenir XSS
+ *
+ * @param string $input Texto a ser sanitizado
+ * @return string Texto sanitizado
+ */
 function sanitizeInput($input) {
     return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
 }

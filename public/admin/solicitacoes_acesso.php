@@ -463,8 +463,8 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 Dashboard
             </a>
             <a href="gerenciar_usuarios.php">
-                <span class="material-icons">people</span>
-                Usuários
+                <span class="material-icons">manage_accounts</span>
+                Gerenciar Usuários
             </a>
             <a href="solicitacoes_acesso.php" class="active">
                 <span class="material-icons">person_add</span>
@@ -753,5 +753,4 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         });
     </script>
 </body>
-
 </html>

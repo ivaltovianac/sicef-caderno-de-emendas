@@ -111,35 +111,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 // Função para ler a planilha Excel
+// function lerPlanilhaEmendas($caminhoArquivo)
+// {
+//     try {
+//         // Verifica se o arquivo existe
+//         if (!file_exists($caminhoArquivo)) {
+//             throw new Exception("Arquivo não encontrado: " . $caminhoArquivo);
+//         }
+//         // Carrega a planilha
+//         $spreadsheet = IOFactory::load($caminhoArquivo);
+//         $sheet = $spreadsheet->getActiveSheet();
+//         $emendas = [];
+
+//         // Itera pelas linhas da planilha
+//         foreach ($sheet->getRowIterator(2) as $row) {
+//             $cells = [];
+//             foreach ($row->getCellIterator() as $cell) {
+//                 $cells[] = $cell->getValue();
+//             }
+
+//             // Verifica se a linha não está vazia
+//             if (!empty($cells[0])) {
+//                 $valor = $cells[10] ?? '0';
+//                 if (is_string($valor)) {
+//                     // Remove o símbolo R$ e espaços
+//                     $valor = str_replace(['R$', ' '], '', $valor);
+//                     // Remove os pontos separadores de milhar
+//                     $valor = str_replace('.', '', $valor);
+//                     // Substitui a vírgula decimal por ponto
+//                     $valor = str_replace(',', '.', $valor);
+//                     // Remove qualquer caractere que não seja número ou ponto
+//                     $valor = preg_replace('/[^0-9.]/', '', $valor);
+//                 }
+
+//                 // Adiciona os dados da emenda ao array
+//                 $emendas[] = [
+//                     'tipo_emenda' => $cells[0] ?? '',
+//                     'eixo_tematico' => $cells[1] ?? '',
+//                     'orgao' => $cells[2] ?? '',
+//                     'objeto_intervencao' => $cells[3] ?? '',
+//                     'ods' => $cells[4] ?? '',
+//                     'regionalizacao' => $cells[5] ?? '',
+//                     'unidade_orcamentaria' => $cells[6] ?? '',
+//                     'programa' => $cells[7] ?? '',
+//                     'acao' => $cells[8] ?? '',
+//                     'categoria_economica' => $cells[9] ?? '',
+//                     'valor' => (float) $valor,
+//                     'justificativa' => $cells[11] ?? ''
+//                 ];
+//             }
+//         }
+//         return $emendas;
+//     } catch (Exception $e) {
+//         // Registra o erro no log
+//         error_log("Erro ao ler planilha: " . $e->getMessage());
+//         return [];
+//     }
+// }
+
 function lerPlanilhaEmendas($caminhoArquivo)
 {
     try {
-        // Verifica se o arquivo existe
         if (!file_exists($caminhoArquivo)) {
             throw new Exception("Arquivo não encontrado: " . $caminhoArquivo);
         }
-        // Carrega a planilha
         $spreadsheet = IOFactory::load($caminhoArquivo);
         $sheet = $spreadsheet->getActiveSheet();
         $emendas = [];
 
-        // Itera pelas linhas da planilha
         foreach ($sheet->getRowIterator(2) as $row) {
             $cells = [];
             foreach ($row->getCellIterator() as $cell) {
                 $cells[] = $cell->getValue();
             }
 
-            // Verifica se a linha não está vazia
             if (!empty($cells[0])) {
                 $valor = $cells[10] ?? '0';
                 if (is_string($valor)) {
-                    // Formata o valor para o formato numérico
-                    $valor = str_replace(['R$', '.', ','], ['', '', '.'], $valor);
+                    $valor = str_replace(['R$', ' '], '', $valor);
+                    $valor = str_replace('.', '', $valor);
+                    $valor = str_replace(',', '.', $valor);
                     $valor = preg_replace('/[^0-9.]/', '', $valor);
                 }
 
-                // Adiciona os dados da emenda ao array
                 $emendas[] = [
                     'tipo_emenda' => $cells[0] ?? '',
                     'eixo_tematico' => $cells[1] ?? '',
@@ -158,7 +212,6 @@ function lerPlanilhaEmendas($caminhoArquivo)
         }
         return $emendas;
     } catch (Exception $e) {
-        // Registra o erro no log
         error_log("Erro ao ler planilha: " . $e->getMessage());
         return [];
     }
@@ -704,8 +757,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 Dashboard
             </a>
             <a href="gerenciar_usuarios.php">
-                <span class="material-icons">people</span>
-                Usuários
+                <span class="material-icons">manage_accounts</span>
+                Gerenciar Usuários
             </a>
             <a href="solicitacoes_acesso.php">
                 <span class="material-icons">person_add</span>

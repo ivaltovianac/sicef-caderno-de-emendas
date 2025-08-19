@@ -20,7 +20,7 @@ if (empty($emenda_id)) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        // Verificar se a emenda pertence ao usuário
+        // Verifica se a emenda pertence ao usuário
         $stmt = $pdo->prepare("SELECT 1 FROM usuario_emendas WHERE usuario_id = ? AND emenda_id = ?");
         $stmt->execute([$usuario_id, $emenda_id]);
         

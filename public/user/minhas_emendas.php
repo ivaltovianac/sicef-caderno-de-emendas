@@ -73,7 +73,7 @@ function loadPlanilhaMapaValores($xlsx_path)
             if (empty($programa) || empty($acao) || empty($uo))
                 continue;
 
-            // Processar valor com função robusta
+            // Processar valor
             $valor = processarValor($valor_str);
 
             if ($valor <= 0)
@@ -108,7 +108,7 @@ function processarValor($valor_str)
         $valor_str = str_replace(',', '.', $valor_str);
     }
 
-    // Remover qualquer caractere não numérico exceto ponto
+    // Remove qualquer caractere não numérico exceto ponto
     $valor_str = preg_replace('/[^0-9.]/', '', $valor_str);
 
     // Se estiver vazio ou não for número, definir como 0
@@ -133,7 +133,7 @@ function getValorPretendidoFromMap($map, $programa, $acao, $uo)
 
 function exportToPDF($data)
 {
-    // Clean any previous output
+    // Limpa qualquer saída anterior
     if (ob_get_level()) {
         ob_end_clean();
     }
@@ -168,7 +168,7 @@ function exportToPDF($data)
         $pdf->Ln(3);
     }
 
-    // Set proper headers for PDF
+    // Define cabeçalhos para PDF
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="minhas_emendas_' . date('Y-m-d') . '.pdf"');
     header('Cache-Control: private, max-age=0, must-revalidate');
@@ -251,7 +251,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 $usuario_id = $_SESSION["user"]["id"];
 
-// Filtros com prepared statements e tipos corretos
+// Filtros com prepared statements e tipos
 $filtros = [];
 $where_conditions = [];
 $params = [$usuario_id]; // Primeiro parâmetro sempre será o usuario_id
@@ -337,14 +337,14 @@ $itens_por_pagina = 20;
 $pagina_atual = max(1, (int) ($_GET['pagina'] ?? 1));
 $offset = ($pagina_atual - 1) * $itens_por_pagina;
 
-// Count query otimizada
+// Count query
 $sql_count = "SELECT COUNT(DISTINCT e.id) as total $base_from $where_clause";
 $stmt_count = $pdo->prepare($sql_count);
 $stmt_count->execute($params);
 $total_emendas = $stmt_count->fetchColumn();
 
 /* Se o filtro por valor_pretendido estiver definido, faz filtragem após o fallback da planilha. 
-Para fins de paginação, é limitado pelo total encontrado inicialmente e depois recalcular se necessário.*/
+Para fins de paginação, é limitado pelo total encontrado inicialmente e depois recalcula se necessário.*/
 $total_paginas = ceil($total_emendas / $itens_por_pagina);
 
 // Exportação
@@ -1146,7 +1146,7 @@ $anos = $anos->fetchAll(PDO::FETCH_COLUMN);
             overlay.classList.toggle('show');
         });
 
-        // Fechar sidebar ao clicar no overlay
+        // Fecha sidebar ao clicar no overlay
         document.getElementById('sidebarOverlay').addEventListener('click', function () {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');

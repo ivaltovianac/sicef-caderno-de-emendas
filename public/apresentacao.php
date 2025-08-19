@@ -786,7 +786,8 @@ session_start();
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; <?php echo date("Y"); ?> SICEF - Sistema de Caderno de Emendas Federais. Todos os direitos reservados.</p>
+        <p>&copy; <?php echo date("Y"); ?> SICEF - Sistema de Caderno de Emendas Federais. Todos os direitos reservados.
+        </p>
       </div>
     </div>
   </footer>

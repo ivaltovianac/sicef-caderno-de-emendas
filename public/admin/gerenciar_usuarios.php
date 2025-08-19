@@ -480,8 +480,8 @@ $tipos_usuario = $pdo->query("SELECT DISTINCT tipo FROM usuarios WHERE tipo IS N
                 Dashboard
             </a>
             <a href="gerenciar_usuarios.php" class="active">
-                <span class="material-icons">people</span>
-                Usuários
+                <span class="material-icons">manage_accounts</span>
+                Gerenciar Usuários
             </a>
             <a href="solicitacoes_acesso.php">
                 <span class="material-icons">person_add</span>

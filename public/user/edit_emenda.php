@@ -164,7 +164,7 @@ function exportToPDF($data)
         $pdf->Ln(3);
     }
 
-    // Set proper headers for PDF
+    // Define cabeçalhos para PDF
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="minhas_emendas_' . date('Y-m-d') . '.pdf"');
     header('Cache-Control: private, max-age=0, must-revalidate');
@@ -209,7 +209,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $valor_pretendido = (float) $row['valor_pretendido'];
                     $total_alocado = (float) $row['total_alocado'];
 
-                    // Aplica fallback da  DA PLANILHA TAMBÉM NA DESTINAÇÃO (CORREÇÃO PRINCIPAL)
+                    // Aplica fallback da  planilha também na destinação
                     if ($valor_pretendido <= 0) {
                         $vpPlan = getValorPretendidoFromMap(
                             $planilhaValores,
@@ -317,12 +317,12 @@ if (isset($_GET['export'])) {
                    ORDER BY ue.criado_em DESC";
 
     $stmt_export = $pdo->prepare($export_sql);
-    // Add usuario_id parameter for the subquery
+    // Add usuario_id parameter para a subquery
     $export_params = array_merge([$usuario_id], $params);
     $stmt_export->execute($export_params);
     $dados_export = $stmt_export->fetchAll(PDO::FETCH_ASSOC);
 
-    // Aplicar fallback da planilha nos dados de exportação
+    // Aplica fallback da planilha nos dados de exportação
     foreach ($dados_export as &$emenda) {
         if ($emenda['valor_pretendido'] <= 0) {
             $vpPlan = getValorPretendidoFromMap(
@@ -371,7 +371,7 @@ if (isset($_GET['export'])) {
             $row++;
         }
 
-        // Set proper headers for Excel
+        // Define cabeçalhos para o Excel
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="minhas_emendas_' . date('Y-m-d') . '.xlsx"');
         header('Cache-Control: private, max-age=0, must-revalidate');
@@ -383,7 +383,7 @@ if (isset($_GET['export'])) {
     }
 }
 
-// Query principal otimizada com fallback de valores
+// Query principal com fallback de valores
 $sql = "SELECT e.*, 
         COALESCE(e.valor_pretendido, e.valor, 0) as valor_pretendido,
         COALESCE((SELECT SUM(valor_destinado) FROM valores_destinados WHERE emenda_id = e.id AND usuario_id = ?), 0) as total_alocado,
@@ -397,7 +397,7 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params_main);
 $emendas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Aplicar fallback da planilha
+// Aplica fallback da planilha
 foreach ($emendas as &$emenda) {
     if ($emenda['valor_pretendido'] <= 0) {
         $vpPlan = getValorPretendidoFromMap(
@@ -414,7 +414,7 @@ foreach ($emendas as &$emenda) {
     $emenda['valor_disponivel'] = $emenda['valor_pretendido'] - $emenda['total_alocado'];
 }
 
-// Carregar opções para filtros (otimizado)
+// Carrega opções para filtros
 $filter_base = "FROM usuario_emendas ue JOIN emendas e ON ue.emenda_id = e.id WHERE ue.usuario_id = ?";
 
 $tipos_emenda = $pdo->prepare("SELECT DISTINCT e.tipo_emenda $filter_base AND e.tipo_emenda IS NOT NULL ORDER BY e.tipo_emenda");

@@ -526,8 +526,8 @@ if (isset($_GET['export'])) {
                 Dashboard
             </a>
             <a href="gerenciar_usuarios.php">
-                <span class="material-icons">people</span>
-                Usuários
+                <span class="material-icons">manage_accounts</span>
+                Gerenciar Usuários
             </a>
             <a href="solicitacoes_acesso.php">
                 <span class="material-icons">person_add</span>
