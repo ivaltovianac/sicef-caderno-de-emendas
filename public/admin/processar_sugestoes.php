@@ -1,5 +1,16 @@
-
 <?php
+/**
+ * Processamento de Sugestões - SICEF
+ *
+ * Este arquivo é responsável por processar as sugestões de emendas feitas pelos usuários.
+ * Permite ao administrador aprovar ou rejeitar sugestões, aplicando as mudanças diretamente
+ * nas emendas quando aprovadas.
+ *
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
 // SICEF-caderno-de-emendas/public/admin/processar_sugestoes.php
 session_start();
 if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
@@ -10,6 +21,8 @@ if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
 require_once __DIR__ . "/../../config/db.php";
 
 $response = ['success' => false, 'message' => ''];
+
+        // Início do processamento da sugestão
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -26,11 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Busca dados da sugestão
         $stmt_sugestao = $pdo->prepare("
-            SELECT s.*, e.* 
-            FROM sugestoes_emendas s 
-            JOIN emendas e ON s.emenda_id = e.id 
+            SELECT s.*, e.*
+            FROM sugestoes_emendas s
+            JOIN emendas e ON s.emenda_id = e.id
             WHERE s.id = ? AND s.status = 'pendente'
         ");
+        // Atualiza a emenda com os dados da sugestão, se permitido
+
         $stmt_sugestao->execute([$sugestao_id]);
         $sugestao = $stmt_sugestao->fetch(PDO::FETCH_ASSOC);
 
@@ -41,38 +56,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status = ($acao === 'aprovar') ? 'aprovado' : 'rejeitado';
 
         // Atualiza status da sugestão
-        $stmt = $pdo->prepare("UPDATE sugestoes_emendas 
-                              SET status = ?, resposta = ?, respondido_em = NOW(), respondido_por = ? 
+        $stmt = $pdo->prepare("UPDATE sugestoes_emendas
+                              SET status = ?, resposta = ?, respondido_em = NOW(), respondido_por = ?
                               WHERE id = ?");
         $stmt->execute([$status, $resposta, $_SESSION['user']['id'], $sugestao_id]);
+        // Cria notificação para o usuário sobre o resultado da sugestão
+
 
         // Se aprovado e deve aplicar mudança, atualizar a emenda
         if ($acao === 'aprovar' && $aplicar_mudanca) {
             $campo_permitido = in_array($sugestao['campo_sugerido'], [
-                'objeto_intervencao', 'valor', 'eixo_tematico', 'orgao', 'ods', 
-                'justificativa', 'regionalizacao', 'unidade_orcamentaria', 
+                'objeto_intervencao', 'valor', 'eixo_tematico', 'orgao', 'ods',
+                'justificativa', 'regionalizacao', 'unidade_orcamentaria',
                 'programa', 'acao', 'categoria_economica'
             ]);
 
             if ($campo_permitido) {
-                $stmt_update = $pdo->prepare("UPDATE emendas 
-                                            SET {$sugestao['campo_sugerido']} = ?, atualizado_em = NOW() 
+                $stmt_update = $pdo->prepare("UPDATE emendas
+                                            SET {$sugestao['campo_sugerido']} = ?, atualizado_em = NOW()
                                             WHERE id = ?");
                 $stmt_update->execute([$sugestao['valor_sugerido'], $sugestao['emenda_id']]);
             }
         }
 
         // Cria notificação para o usuário
-        $mensagem_notif = $acao === 'aprovar' 
-            ? "Sua sugestão foi aprovada" . ($aplicar_mudanca ? " e aplicada" : "") 
+        $mensagem_notif = $acao === 'aprovar'
+            ? "Sua sugestão foi aprovada" . ($aplicar_mudanca ? " e aplicada" : "")
             : "Sua sugestão foi rejeitada";
-        
+
+        error_log("Erro ao processar sugestão ID {$sugestao_id}: " . $e->getMessage());
+
         if (!empty($resposta)) {
             $mensagem_notif .= ": " . $resposta;
         }
 
-        $stmt_notif = $pdo->prepare("INSERT INTO notificacoes (usuario_id, tipo, mensagem, referencia_id, criado_em) 
-                                    SELECT usuario_id, 'resposta_sugestao', ?, id, NOW() 
+        $stmt_notif = $pdo->prepare("INSERT INTO notificacoes (usuario_id, tipo, mensagem, referencia_id, criado_em)
+                                    SELECT usuario_id, 'resposta_sugestao', ?, id, NOW()
                                     FROM sugestoes_emendas WHERE id = ?");
         $stmt_notif->execute([$mensagem_notif, $sugestao_id]);
 
@@ -103,3 +122,4 @@ $_SESSION['message'] = $response['message'];
 $redirect = $_POST['redirect'] ?? 'sugestoes.php';
 header("Location: $redirect");
 exit;
+?>

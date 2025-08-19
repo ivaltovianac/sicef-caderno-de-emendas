@@ -1,4 +1,24 @@
 <?php
+/**
+ * Dashboard Administrativo - SICEF
+ * 
+ * Este arquivo é responsável por exibir o painel administrativo do sistema SICEF.
+ * Ele permite ao administrador visualizar estatísticas, gerenciar emendas, 
+ * responder sugestões e sincronizar dados com a planilha oficial.
+ * 
+ * Funcionalidades:
+ * - Exibição de estatísticas do sistema
+ * - Listagem de emendas com filtros e paginação
+ * - Exportação de dados para Excel
+ * - Resposta a sugestões de usuários
+ * - Sincronização com planilha Excel
+ * - Gerenciamento de solicitações de acesso
+ * 
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
 // Inicia a sessão para verificar se o usuário está logado e é administrador
 session_start();
 
@@ -183,7 +203,7 @@ if (!empty($_GET['ano_projeto'])) {
 $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
 // Paginação
-$itens_por_pagina = 20;
+$itens_por_pagina = 10;
 $pagina_atual = max(1, (int) ($_GET['pagina'] ?? 1));
 $offset = ($pagina_atual - 1) * $itens_por_pagina;
 
@@ -229,7 +249,7 @@ try {
         JOIN emendas e ON s.emenda_id = e.id 
         WHERE s.status = 'pendente' 
         ORDER BY s.criado_em DESC 
-        LIMIT 10
+        LIMIT 2
     ");
     $stmt_sugestoes_detalhes->execute();
     $sugestoes_pendentes = $stmt_sugestoes_detalhes->fetchAll(PDO::FETCH_ASSOC);
@@ -240,51 +260,125 @@ try {
 }
 
 // Exporta os dados para Excel
-if (isset($_GET['export'])) {
+if (isset($_GET['export']) && $_GET['export'] === 'excel') {
+    // Evita qualquer saída anterior que possa corromper o arquivo
+    if (ob_get_length()) {
+        ob_end_clean();
+    }
+
+    // Executa a consulta
     $export_query = "SELECT * FROM emendas $where_clause ORDER BY criado_em DESC";
     $stmt_export = $pdo->prepare($export_query);
-    $stmt_export->execute(array_slice($params, 0, -2)); // Remove LIMIT e OFFSET params
+    $stmt_export->execute(array_slice($params, 0, -2)); // Remove LIMIT e OFFSET
     $dados_export = $stmt_export->fetchAll(PDO::FETCH_ASSOC);
 
-    if ($_GET['export'] === 'excel') {
-        // Cria uma nova planilha
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
+    // Cria a planilha
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
 
-        // Define os cabeçalhos
-        $headers = ['ID', 'Tipo', 'Eixo Temático', 'Órgão', 'Objeto', 'ODS', 'Valor', 'Justificativa', 'Regionalização', 'Unidade Orçamentária', 'Programa', 'Ação', 'Categoria Econômica', 'Criado em'];
-        $sheet->fromArray($headers, null, 'A1');
+    // Cabeçalhos
+    $headers = [
+        'ID',
+        'Tipo',
+        'Eixo Temático',
+        'Órgão',
+        'Objeto',
+        'ODS',
+        'Valor',
+        'Justificativa',
+        'Regionalização',
+        'Unidade Orçamentária',
+        'Programa',
+        'Ação',
+        'Categoria Econômica',
+        'Criado em'
+    ];
+    $sheet->fromArray($headers, null, 'A1');
 
-        // Preenche os dados
-        $row = 2;
-        foreach ($dados_export as $emenda) {
-            $sheet->fromArray([
-                $emenda['id'],
-                $emenda['tipo_emenda'],
-                $emenda['eixo_tematico'],
-                $emenda['orgao'],
-                $emenda['objeto_intervencao'],
-                $emenda['ods'],
-                $emenda['valor'],
-                $emenda['justificativa'],
-                $emenda['regionalizacao'],
-                $emenda['unidade_orcamentaria'],
-                $emenda['programa'],
-                $emenda['acao'],
-                $emenda['categoria_economica'],
-                $emenda['criado_em']
-            ], null, "A$row");
-            $row++;
-        }
+    // Estilo para cabeçalhos
+    $estiloCabecalho = [
+        'font' => [
+            'bold' => true,
+            'color' => ['rgb' => 'FFFFFF'],
+            'size' => 12,
+        ],
+        'fill' => [
+            'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+            'startColor' => ['rgb' => '4F81BD'],
+        ],
+        'alignment' => [
+            'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+            'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+        ],
+        'borders' => [
+            'allBorders' => [
+                'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                'color' => ['rgb' => '000000'],
+            ],
+        ],
+    ];
+    $sheet->getStyle('A1:O1')->applyFromArray($estiloCabecalho);
 
-        // Gera o arquivo Excel
-        $writer = new Xlsx($spreadsheet);
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="emendas_' . date('Y-m-d') . '.xlsx"');
-        header('Cache-Control: max-age=0');
-        $writer->save('php://output');
-        exit;
+    // Função para truncar texto longo
+    function limitarTexto($texto, $limite = 500)
+    {
+        return mb_substr(trim((string) $texto), 0, $limite);
     }
+
+    // Preenche os dados
+    $row = 2;
+    foreach ($dados_export as $emenda) {
+        $sheet->fromArray([
+            $emenda['id'],
+            limitarTexto($emenda['tipo_emenda'], 150),
+            limitarTexto($emenda['eixo_tematico'], 200),
+            limitarTexto($emenda['orgao'], 255),
+            limitarTexto($emenda['objeto_intervencao'], 1000),
+            limitarTexto($emenda['ods'], 100),
+            $emenda['valor'],
+            limitarTexto($emenda['justificativa'], 1000),
+            limitarTexto($emenda['regionalizacao'], 255),
+            limitarTexto($emenda['unidade_orcamentaria'], 200),
+            limitarTexto($emenda['programa'], 100),
+            limitarTexto($emenda['acao'], 200),
+            limitarTexto($emenda['categoria_economica'], 200),
+            $emenda['criado_em']
+        ], null, "A$row");
+        $row++;
+    }
+
+    // Estilo para dados
+    $estiloDados = [
+        'alignment' => [
+            'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP,
+        ],
+        'borders' => [
+            'allBorders' => [
+                'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                'color' => ['rgb' => 'CCCCCC'],
+            ],
+        ],
+    ];
+    $sheet->getStyle("A2:O$row")->applyFromArray($estiloDados);
+
+    // Ajusta largura das colunas
+    foreach (range('A', 'O') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+
+    // Congela a primeira linha
+    $sheet->freezePane('A2');
+
+    // Adiciona filtro automático
+    $sheet->setAutoFilter("A1:O1");
+
+    // Gera e envia o arquivo Excel
+    $writer = new Xlsx($spreadsheet);
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="emendas_' . date('Y-m-d') . '.xlsx"');
+    header('Cache-Control: max-age=0');
+    $writer->save('php://output');
+    exit;
 }
 ?>
 <!DOCTYPE html>

@@ -1,4 +1,3 @@
-
 <?php
 // SICEF-caderno-de-emendas/public/admin/relatorios.php
 session_start();
@@ -77,8 +76,18 @@ try {
 }
 
 // Processar exportação
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+
 if (isset($_GET['export'])) {
     try {
+        // Evita qualquer saída anterior que possa corromper o arquivo
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
         $tipo_export = $_GET['export'];
         $formato = $_GET['formato'] ?? 'excel';
 
@@ -119,31 +128,75 @@ if (isset($_GET['export'])) {
         }
 
         if ($formato === 'excel') {
+            // Função para truncar texto longo
+            function limitarTexto($texto, $limite = 1000)
+            {
+                return mb_substr(trim((string) $texto), 0, $limite);
+            }
+
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
-            
+
             // Cabeçalhos
             $sheet->fromArray($headers, null, 'A1');
-            
-            // Estilizar cabeçalhos
-            $headerRange = 'A1:' . chr(64 + count($headers)) . '1';
-            $sheet->getStyle($headerRange)->getFont()->setBold(true);
-            $sheet->getStyle($headerRange)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
-            $sheet->getStyle($headerRange)->getFill()->getStartColor()->setRGB('00796B');
-            $sheet->getStyle($headerRange)->getFont()->getColor()->setRGB('FFFFFF');
-            
-            // Dados
+
+            // Estilo para cabeçalhos
+            $lastColumn = Coordinate::stringFromColumnIndex(count($headers));
+            $sheet->getStyle("A1:{$lastColumn}1")->applyFromArray([
+                'font' => [
+                    'bold' => true,
+                    'color' => ['rgb' => 'FFFFFF'],
+                    'size' => 12,
+                ],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '4F81BD'],
+                ],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['rgb' => '000000'],
+                    ],
+                ],
+            ]);
+
+            // Preenche os dados
             $row = 2;
-            foreach ($dados as $item) {
-                $sheet->fromArray(array_values($item), null, "A$row");
+            foreach ($dados as $linha) {
+                $sheet->fromArray(array_map(fn($v) => limitarTexto($v), array_values($linha)), null, "A{$row}");
                 $row++;
             }
-            
-            // Auto-ajustar colunas
-            foreach (range('A', chr(64 + count($headers))) as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
+
+            // Estilo para dados
+            $sheet->getStyle("A2:{$lastColumn}{$row}")->applyFromArray([
+                'alignment' => [
+                    'vertical' => Alignment::VERTICAL_TOP,
+                ],
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['rgb' => 'CCCCCC'],
+                    ],
+                ],
+            ]);
+
+            // Ajusta largura das colunas
+            for ($col = 1; $col <= count($headers); $col++) {
+                $colLetter = Coordinate::stringFromColumnIndex($col);
+                $sheet->getColumnDimension($colLetter)->setAutoSize(true);
             }
-            
+
+            // Congela a primeira linha
+            $sheet->freezePane('A2');
+
+            // Adiciona filtro automático
+            $sheet->setAutoFilter("A1:{$lastColumn}1");
+
+            // Gera e envia o arquivo Excel
             $writer = new Xlsx($spreadsheet);
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             header("Content-Disposition: attachment;filename=\"{$filename}.xlsx\"");
@@ -159,6 +212,7 @@ if (isset($_GET['export'])) {
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -237,7 +291,8 @@ if (isset($_GET['export'])) {
             transition: background-color 0.3s;
         }
 
-        .sidebar-menu a:hover, .sidebar-menu a.active {
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
             background-color: rgba(255, 255, 255, 0.1);
         }
 
@@ -454,6 +509,7 @@ if (isset($_GET['export'])) {
         }
     </style>
 </head>
+
 <body>
     <!-- Overlay para mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -694,17 +750,17 @@ if (isset($_GET['export'])) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Menu toggle responsivo
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const menuToggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-            menuToggle.addEventListener('click', function() {
+            menuToggle.addEventListener('click', function () {
                 sidebar.classList.toggle('show');
                 sidebarOverlay.classList.toggle('show');
             });
 
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('show');
                 sidebarOverlay.classList.remove('show');
             });
@@ -712,7 +768,7 @@ if (isset($_GET['export'])) {
             // Fechar sidebar ao clicar em link (mobile)
             const sidebarLinks = sidebar.querySelectorAll('a');
             sidebarLinks.forEach(link => {
-                link.addEventListener('click', function() {
+                link.addEventListener('click', function () {
                     if (window.innerWidth <= 768) {
                         sidebar.classList.remove('show');
                         sidebarOverlay.classList.remove('show');
@@ -778,9 +834,11 @@ if (isset($_GET['export'])) {
             // Gráfico de Top Eixos Temáticos
             const eixosCtx = document.getElementById('eixosChart').getContext('2d');
             new Chart(eixosCtx, {
-                type: 'horizontalBar',
+                type: 'bar', // Chart.js v3+ usa 'bar' com indexAxis: 'y'
                 data: {
-                    labels: <?= json_encode(array_map(function($item) { return substr($item['eixo_tematico'], 0, 30) . '...'; }, $top_eixos)) ?>,
+                    labels: <?= json_encode(array_map(function ($item) {
+                        return mb_substr($item['eixo_tematico'], 0, 30) . '...';
+                    }, $top_eixos)) ?>,
                     datasets: [{
                         label: 'Emendas',
                         data: <?= json_encode(array_column($top_eixos, 'total')) ?>,
@@ -792,10 +850,32 @@ if (isset($_GET['export'])) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    indexAxis: 'y',
+                    indexAxis: 'y', // Isso transforma o gráfico em horizontal
                     scales: {
                         x: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 0,
+                                minRotation: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return `Total: ${context.parsed.x}`;
+                                }
+                            }
                         }
                     }
                 }
@@ -804,9 +884,11 @@ if (isset($_GET['export'])) {
             // Gráfico de Top Órgãos
             const orgaosCtx = document.getElementById('orgaosChart').getContext('2d');
             new Chart(orgaosCtx, {
-                type: 'horizontalBar',
+                type: 'bar', // Chart.js v3+ usa 'bar' com indexAxis: 'y'
                 data: {
-                    labels: <?= json_encode(array_map(function($item) { return substr($item['orgao'], 0, 40) . '...'; }, $top_orgaos)) ?>,
+                    labels: <?= json_encode(array_map(function ($item) {
+                        return mb_substr($item['orgao'], 0, 40) . '...';
+                    }, $top_orgaos)) ?>,
                     datasets: [{
                         label: 'Emendas',
                         data: <?= json_encode(array_column($top_orgaos, 'total')) ?>,
@@ -818,10 +900,32 @@ if (isset($_GET['export'])) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    indexAxis: 'y',
+                    indexAxis: 'y', // transforma em gráfico horizontal
                     scales: {
                         x: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 0,
+                                minRotation: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return `Total de emendas: ${context.parsed.x}`;
+                                }
+                            }
                         }
                     }
                 }
@@ -829,4 +933,5 @@ if (isset($_GET['export'])) {
         }
     </script>
 </body>
+
 </html>

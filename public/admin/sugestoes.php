@@ -1,21 +1,44 @@
-
 <?php
-// SICEF-caderno-de-emendas/public/admin/sugestoes.php
+/**
+ * Gerenciamento de Sugestões de Emendas - SICEF
+ * 
+ * Este arquivo é responsável por gerenciar as sugestões de emendas feitas pelos usuários.
+ * Permite ao administrador aprovar ou rejeitar sugestões, aplicando as mudanças diretamente
+ * nas emendas quando aprovadas.
+ * 
+ * Funcionalidades:
+ * - Listagem de sugestões com filtros (status)
+ * - Aprovação de sugestões (com opção de aplicar mudanças)
+ * - Rejeição de sugestões (com motivo)
+ * - Paginação dos resultados
+ * - Notificações para usuários
+ * 
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
+// Inicia a sessão para verificar se o usuário está logado e é administrador
 session_start();
+
+// Verifica se o usuário está logado e se é administrador
 if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    // Redireciona para a página de login caso não seja administrador
     header("Location: ../login.php");
     exit;
 }
 
+// Inclui os arquivos de configuração do banco de dados
 require_once __DIR__ . "/../../config/db.php";
 
-// Contadores para badges
+// Contadores para badges no menu
 $stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
 $solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
 
 $stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
 $qtde_sugestoes_pendentes = $stmt_sugestoes->fetchColumn();
 
+// Variáveis para mensagens de feedback
 $message = "";
 $error = "";
 
@@ -34,22 +57,25 @@ $campos_editaveis = [
     'categoria_economica' => 'Categoria Econômica'
 ];
 
-// Processar resposta à sugestão
+// Processa ações do formulário (aprovar ou rejeitar sugestões)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     try {
         if ($_POST['action'] === 'responder_sugestao') {
-            $sugestao_id = (int)$_POST['sugestao_id'];
+            // Obtém os dados da sugestão
+            $sugestao_id = (int) $_POST['sugestao_id'];
             $resposta = trim($_POST['resposta'] ?? '');
             $status = $_POST['status'] ?? '';
             $aplicar_mudanca = isset($_POST['aplicar_mudanca']) && $_POST['aplicar_mudanca'] === '1';
 
+            // Valida os dados recebidos
             if (empty($sugestao_id) || empty($status) || !in_array($status, ['aprovado', 'rejeitado'])) {
                 throw new Exception('Dados inválidos');
             }
 
+            // Inicia uma transação para garantir consistência dos dados
             $pdo->beginTransaction();
 
-            // Buscar dados da sugestão
+            // Busca a sugestão no banco de dados
             $stmt_sugestao = $pdo->prepare("
                 SELECT s.*, e.* 
                 FROM sugestoes_emendas s 
@@ -59,11 +85,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt_sugestao->execute([$sugestao_id]);
             $sugestao = $stmt_sugestao->fetch(PDO::FETCH_ASSOC);
 
+            // Verifica se a sugestão existe
             if (!$sugestao) {
                 throw new Exception('Sugestão não encontrada ou já processada');
             }
 
-            // Atualizar status da sugestão
+            // Atualiza o status da sugestão
             $stmt = $pdo->prepare("UPDATE sugestoes_emendas SET status = ?, resposta = ?, respondido_em = NOW(), respondido_por = ? WHERE id = ?");
             $stmt->execute([$status, $resposta, $_SESSION['user']['id'], $sugestao_id]);
 
@@ -77,11 +104,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             }
 
-            // Criar notificação para o usuário
-            $mensagem_notif = $status === 'aprovado' 
-                ? "Sua sugestão foi aprovada" . ($aplicar_mudanca ? " e aplicada" : "") 
+            // Cria uma notificação para o usuário
+            $mensagem_notif = $status === 'aprovado'
+                ? "Sua sugestão foi aprovada" . ($aplicar_mudanca ? " e aplicada" : "")
                 : "Sua sugestão foi rejeitada";
-            
+
             if (!empty($resposta)) {
                 $mensagem_notif .= ": " . $resposta;
             }
@@ -89,47 +116,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt_notif = $pdo->prepare("INSERT INTO notificacoes (usuario_id, tipo, mensagem, referencia_id, criado_em) SELECT usuario_id, 'resposta_sugestao', ?, id, NOW() FROM sugestoes_emendas WHERE id = ?");
             $stmt_notif->execute([$mensagem_notif, $sugestao_id]);
 
+            // Confirma a transação
             $pdo->commit();
             $message = "Resposta enviada com sucesso!";
 
         } else {
+            // Lança exceção para ações inválidas
             throw new Exception('Ação inválida');
         }
     } catch (Exception $e) {
+        // Reverte a transação em caso de erro
         $pdo->rollBack();
         $error = $e->getMessage();
     } catch (PDOException $e) {
+        // Reverte a transação e registra erro em caso de falha no banco de dados
         $pdo->rollBack();
         error_log("Erro ao processar sugestão: " . $e->getMessage());
         $error = "Erro interno do servidor";
     }
 }
 
-// Carregar sugestões com filtros e paginação
+// Carrega sugestões com paginação
 $filtro_status = $_GET['status'] ?? '';
 $where_conditions = [];
 $params = [];
 
+// Aplica filtro por status se fornecido
 if (!empty($filtro_status)) {
     $where_conditions[] = "s.status = ?";
     $params[] = $filtro_status;
 }
 
+// Monta a cláusula WHERE
 $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
-// Paginação
+// Configuração da paginação
 $itens_por_pagina = 20;
-$pagina_atual = max(1, (int)($_GET['pagina'] ?? 1));
+$pagina_atual = max(1, (int) ($_GET['pagina'] ?? 1));
 $offset = ($pagina_atual - 1) * $itens_por_pagina;
 
-// Count query
+// Query para contar o número total de sugestões
 $count_query = "SELECT COUNT(*) FROM sugestoes_emendas s $where_clause";
 $stmt_count = $pdo->prepare($count_query);
 $stmt_count->execute($params);
 $total_sugestoes = $stmt_count->fetchColumn();
 $total_paginas = ceil($total_sugestoes / $itens_por_pagina);
 
-// Main query
+// Query principal para buscar as sugestões
 $query = "SELECT s.*, u.nome as usuario_nome, e.objeto_intervencao, ur.nome as respondido_por_nome
           FROM sugestoes_emendas s 
           JOIN usuarios u ON s.usuario_id = u.id 
@@ -146,6 +179,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -155,6 +189,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
+        /* Variáveis de cores e dimensões */
         :root {
             --primary-color: #00796B;
             --secondary-color: #009688;
@@ -164,19 +199,21 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             --sidebar-width: 280px;
         }
 
+        /* Reset básico */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
+        /* Estilo do corpo da página */
         body {
             font-family: 'Poppins', sans-serif;
             background-color: #f8f9fa;
             overflow-x: hidden;
         }
 
-        /* Sidebar responsivo */
+        /* Sidebar fixa e responsiva */
         .sidebar {
             position: fixed;
             top: 0;
@@ -190,10 +227,12 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             overflow-y: auto;
         }
 
+        /* Sidebar escondida (mobile) */
         .sidebar.collapsed {
             transform: translateX(-100%);
         }
 
+        /* Cabeçalho da sidebar */
         .sidebar-header {
             padding: 1.5rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -210,6 +249,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-size: 0.9rem;
         }
 
+        /* Menu da sidebar */
         .sidebar-menu {
             padding: 1rem 0;
         }
@@ -223,7 +263,8 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             transition: background-color 0.3s;
         }
 
-        .sidebar-menu a:hover, .sidebar-menu a.active {
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
             background-color: rgba(255, 255, 255, 0.1);
         }
 
@@ -236,17 +277,19 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin-left: auto;
         }
 
-        /* Main content responsivo */
+        /* Conteúdo principal com margem para sidebar */
         .main-content {
             margin-left: var(--sidebar-width);
             min-height: 100vh;
             transition: margin-left 0.3s ease;
         }
 
+        /* Conteúdo expandido (sidebar escondida) */
         .main-content.expanded {
             margin-left: 0;
         }
 
+        /* Barra superior */
         .top-bar {
             background: white;
             padding: 1rem 1.5rem;
@@ -257,6 +300,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             flex-wrap: wrap;
         }
 
+        /* Botão para toggle do menu (mobile) */
         .menu-toggle {
             display: none;
             background: none;
@@ -266,6 +310,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             cursor: pointer;
         }
 
+        /* Informações do usuário logado */
         .user-info {
             display: flex;
             align-items: center;
@@ -273,10 +318,12 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin-left: auto;
         }
 
+        /* Área de conteúdo */
         .content-area {
             padding: 2rem;
         }
 
+        /* Cards gerais */
         .card {
             border: none;
             border-radius: 10px;
@@ -284,6 +331,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin-bottom: 2rem;
         }
 
+        /* Cabeçalho dos cards */
         .card-header {
             background: var(--primary-color);
             color: white;
@@ -291,6 +339,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-weight: 600;
         }
 
+        /* Botão primário */
         .btn-primary {
             background-color: var(--primary-color);
             border-color: var(--primary-color);
@@ -301,6 +350,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             border-color: var(--secondary-color);
         }
 
+        /* Paginação */
         .pagination .page-link {
             color: var(--primary-color);
         }
@@ -310,7 +360,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             border-color: var(--primary-color);
         }
 
-        /* Responsividade mobile */
+        /* Responsividade para telas pequenas */
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -360,6 +410,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             display: block;
         }
 
+        /* Badges de status */
         .status-badge {
             padding: 0.25rem 0.5rem;
             border-radius: 0.375rem;
@@ -382,6 +433,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             color: #721c24;
         }
 
+        /* Card de filtros */
         .filters-card {
             background: white;
             border-radius: 10px;
@@ -390,6 +442,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
+        /* Cards de sugestões */
         .sugestao-card {
             border: 1px solid #dee2e6;
             border-radius: 10px;
@@ -398,6 +451,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             background: white;
         }
 
+        /* Cabeçalho do card de sugestão */
         .sugestao-header {
             display: flex;
             justify-content: between;
@@ -407,16 +461,19 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             gap: 1rem;
         }
 
+        /* Informações da sugestão */
         .sugestao-info {
             flex: 1;
         }
 
+        /* Ações da sugestão */
         .sugestao-actions {
             display: flex;
             gap: 0.5rem;
             flex-wrap: wrap;
         }
 
+        /* Campo sugerido */
         .campo-sugerido {
             background: #f8f9fa;
             border-radius: 5px;
@@ -424,22 +481,25 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin: 0.5rem 0;
         }
 
+        /* Valor original */
         .valor-original {
             color: #6c757d;
             text-decoration: line-through;
         }
 
+        /* Valor sugerido */
         .valor-sugerido {
             color: var(--primary-color);
             font-weight: 600;
         }
     </style>
 </head>
+
 <body>
     <!-- Overlay para mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-    <!-- Sidebar melhorado -->
+    <!-- Sidebar com navegação -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h4>SICEF Admin</h4>
@@ -483,9 +543,9 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </nav>
     </div>
 
-    <!-- Main Content -->
+    <!-- Conteúdo principal -->
     <div class="main-content" id="mainContent">
-        <!-- Top Bar -->
+        <!-- Barra superior -->
         <div class="top-bar">
             <button class="menu-toggle" id="menuToggle">
                 <span class="material-icons">menu</span>
@@ -497,8 +557,9 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
 
-        <!-- Content Area -->
+        <!-- Área de conteúdo -->
         <div class="content-area">
+            <!-- Exibe mensagem de sucesso, se houver -->
             <?php if (!empty($message)): ?>
                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                     <span class="material-icons me-2">check_circle</span>
@@ -507,6 +568,7 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             <?php endif; ?>
 
+            <!-- Exibe mensagem de erro, se houver -->
             <?php if (!empty($error)): ?>
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     <span class="material-icons me-2">error</span>
@@ -523,9 +585,12 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <label class="form-label">Status</label>
                         <select name="status" class="form-control">
                             <option value="">Todos</option>
-                            <option value="pendente" <?= $filtro_status === 'pendente' ? 'selected' : '' ?>>Pendente</option>
-                            <option value="aprovado" <?= $filtro_status === 'aprovado' ? 'selected' : '' ?>>Aprovado</option>
-                            <option value="rejeitado" <?= $filtro_status === 'rejeitado' ? 'selected' : '' ?>>Rejeitado</option>
+                            <option value="pendente" <?= $filtro_status === 'pendente' ? 'selected' : '' ?>>Pendente
+                            </option>
+                            <option value="aprovado" <?= $filtro_status === 'aprovado' ? 'selected' : '' ?>>Aprovado
+                            </option>
+                            <option value="rejeitado" <?= $filtro_status === 'rejeitado' ? 'selected' : '' ?>>Rejeitado
+                            </option>
                         </select>
                     </div>
                     <button type="submit" class="btn btn-primary">
@@ -566,18 +631,18 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             </small>
                                         </div>
                                         <p class="mb-1">
-                                            <strong>Emenda:</strong> 
+                                            <strong>Emenda:</strong>
                                             <?= htmlspecialchars(substr($sugestao['objeto_intervencao'], 0, 100)) ?>...
                                         </p>
                                     </div>
                                     <?php if ($sugestao['status'] === 'pendente'): ?>
                                         <div class="sugestao-actions">
-                                            <button type="button" class="btn btn-sm btn-success" 
-                                                    onclick="responderSugestao(<?= $sugestao['id'] ?>, 'aprovar')">
+                                            <button type="button" class="btn btn-sm btn-success"
+                                                onclick="responderSugestao(<?= $sugestao['id'] ?>, 'aprovar')">
                                                 <span class="material-icons">check</span>
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-danger" 
-                                                    onclick="responderSugestao(<?= $sugestao['id'] ?>, 'rejeitar')">
+                                            <button type="button" class="btn btn-sm btn-danger"
+                                                onclick="responderSugestao(<?= $sugestao['id'] ?>, 'rejeitar')">
                                                 <span class="material-icons">close</span>
                                             </button>
                                         </div>
@@ -585,14 +650,16 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </div>
 
                                 <div class="campo-sugerido">
-                                    <strong>Campo:</strong> <?= htmlspecialchars($campos_editaveis[$sugestao['campo_sugerido']] ?? $sugestao['campo_sugerido']) ?><br>
-                                    <strong>Valor Sugerido:</strong> 
+                                    <strong>Campo:</strong>
+                                    <?= htmlspecialchars($campos_editaveis[$sugestao['campo_sugerido']] ?? $sugestao['campo_sugerido']) ?><br>
+                                    <strong>Valor Sugerido:</strong>
                                     <span class="valor-sugerido"><?= htmlspecialchars($sugestao['valor_sugerido']) ?></span>
                                 </div>
 
                                 <?php if ($sugestao['status'] !== 'pendente'): ?>
                                     <div class="mt-3 p-3 bg-light rounded">
-                                        <strong>Resposta:</strong> <?= htmlspecialchars($sugestao['resposta'] ?? 'Sem resposta') ?><br>
+                                        <strong>Resposta:</strong>
+                                        <?= htmlspecialchars($sugestao['resposta'] ?? 'Sem resposta') ?><br>
                                         <small class="text-muted">
                                             Respondido em <?= date('d/m/Y H:i', strtotime($sugestao['respondido_em'])) ?>
                                             <?php if ($sugestao['respondido_por_nome']): ?>
@@ -613,7 +680,8 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <ul class="pagination justify-content-center">
                         <?php if ($pagina_atual > 1): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
                                     Anterior
                                 </a>
                             </li>
@@ -621,7 +689,8 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <?php for ($i = max(1, $pagina_atual - 2); $i <= min($total_paginas, $pagina_atual + 2); $i++): ?>
                             <li class="page-item <?= $i === $pagina_atual ? 'active' : '' ?>">
-                                <a class="page-link" href="?pagina=<?= $i ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $i ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
                                     <?= $i ?>
                                 </a>
                             </li>
@@ -629,7 +698,8 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <?php if ($pagina_atual < $total_paginas): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
                                     Próxima
                                 </a>
                             </li>
@@ -658,12 +728,13 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="resposta" class="form-label">Resposta</label>
-                            <textarea class="form-control" id="resposta" name="resposta" rows="3" 
-                                      placeholder="Digite sua resposta (opcional)..."></textarea>
+                            <textarea class="form-control" id="resposta" name="resposta" rows="3"
+                                placeholder="Digite sua resposta (opcional)..."></textarea>
                         </div>
                         <div class="mb-3" id="aplicar_mudanca_div" style="display: none;">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="aplicar_mudanca" name="aplicar_mudanca" value="1">
+                                <input class="form-check-input" type="checkbox" id="aplicar_mudanca"
+                                    name="aplicar_mudanca" value="1">
                                 <label class="form-check-label" for="aplicar_mudanca">
                                     Aplicar mudança na emenda
                                 </label>
@@ -687,26 +758,26 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Menu toggle responsivo
-        document.addEventListener('DOMContentLoaded', function() {
+        // Controle do menu lateral responsivo
+        document.addEventListener('DOMContentLoaded', function () {
             const menuToggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-            menuToggle.addEventListener('click', function() {
+            menuToggle.addEventListener('click', function () {
                 sidebar.classList.toggle('show');
                 sidebarOverlay.classList.toggle('show');
             });
 
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('show');
                 sidebarOverlay.classList.remove('show');
             });
 
-            // Fechar sidebar ao clicar em link (mobile)
+            // Fecha sidebar ao clicar em link no mobile
             const sidebarLinks = sidebar.querySelectorAll('a');
             sidebarLinks.forEach(link => {
-                link.addEventListener('click', function() {
+                link.addEventListener('click', function () {
                     if (window.innerWidth <= 768) {
                         sidebar.classList.remove('show');
                         sidebarOverlay.classList.remove('show');
@@ -715,14 +786,14 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             });
         });
 
-        // Função para responder sugestão
+        // Funções de sugestão
         function responderSugestao(id, acao) {
             document.getElementById('responder_id').value = id;
             document.getElementById('responder_status').value = acao === 'aprovar' ? 'aprovado' : 'rejeitado';
-            
+
             const aplicarDiv = document.getElementById('aplicar_mudanca_div');
             const btn = document.getElementById('responder_btn');
-            
+
             if (acao === 'aprovar') {
                 aplicarDiv.style.display = 'block';
                 btn.className = 'btn btn-success';
@@ -732,15 +803,16 @@ $sugestoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 btn.className = 'btn btn-danger';
                 btn.innerHTML = '<span class="material-icons me-1">close</span>Rejeitar';
             }
-            
+
             new bootstrap.Modal(document.getElementById('responderModal')).show();
         }
 
-        // Limpar modal ao fechar
-        document.getElementById('responderModal').addEventListener('hidden.bs.modal', function() {
+        // Limpa modal ao fechar
+        document.getElementById('responderModal').addEventListener('hidden.bs.modal', function () {
             document.getElementById('resposta').value = '';
             document.getElementById('aplicar_mudanca').checked = false;
         });
     </script>
 </body>
+
 </html>

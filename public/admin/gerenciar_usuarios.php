@@ -1,32 +1,58 @@
-
 <?php
-// SICEF-caderno-de-emendas/public/admin/gerenciar_usuarios.php
+/**
+ * Gerenciamento de Usuários - SICEF
+ * 
+ * Este arquivo é responsável por gerenciar os usuários do sistema SICEF.
+ * Permite ao administrador criar, editar, deletar e visualizar usuários,
+ * além de aplicar filtros e paginação na listagem.
+ * 
+ * Funcionalidades:
+ * - Listagem de usuários com filtros (nome, email, tipo, status)
+ * - Criação de novos usuários
+ * - Edição de usuários existentes
+ * - Exclusão de usuários
+ * - Paginação dos resultados
+ * - Validação de dados
+ * 
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
+// Inicia a sessão para verificar se o usuário está logado e é administrador
 session_start();
+
+// Verifica se o usuário está logado e se é administrador
 if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    // Redireciona para a página de login caso não seja administrador
     header("Location: ../login.php");
     exit;
 }
 
+// Inclui os arquivos de configuração do banco de dados e modelo de usuário
 require_once __DIR__ . "/../../config/db.php";
 require_once __DIR__ . "/../../models/User.php";
 
-// Contadores para badges
+// Contadores para badges no menu
 $stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
 $solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
 
 $stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
 $qtde_sugestoes_pendentes = $stmt_sugestoes->fetchColumn();
 
+// Instancia o modelo de usuário
 $userModel = new User($pdo);
+
+// Variáveis para mensagens de feedback
 $message = "";
 $error = "";
 
-// Processa ações
+// Processa ações do formulário (criar, editar, deletar)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         switch ($_POST['action']) {
             case 'create':
-                // Cria usuário
+                // Cria um novo usuário
                 $userData = [
                     'nome' => trim($_POST['nome'] ?? ''),
                     'email' => trim($_POST['email'] ?? ''),
@@ -35,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'is_admin' => isset($_POST['is_admin']) ? 1 : 0
                 ];
                 
+                // Validação dos dados
                 if (empty($userData['nome']) || empty($userData['email']) || empty($userData['senha']) || empty($userData['tipo'])) {
                     throw new Exception("Todos os campos são obrigatórios");
                 }
@@ -47,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("A senha deve ter pelo menos 6 caracteres");
                 }
                 
+                // Insere o novo usuário no banco de dados
                 $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha, tipo, is_admin, is_user, criado_em) VALUES (?, ?, ?, ?, ?, true, NOW())");
                 $hashedPassword = password_hash($userData['senha'], PASSWORD_DEFAULT);
                 
@@ -58,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'update':
-                // Atualizar usuário
+                // Atualiza um usuário existente
                 $id = (int)$_POST['id'];
                 $userData = [
                     'nome' => trim($_POST['nome'] ?? ''),
@@ -68,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'is_user' => isset($_POST['is_user']) ? 1 : 0
                 ];
                 
+                // Verifica se uma nova senha foi fornecida
                 if (!empty($_POST['senha'])) {
                     if (strlen($_POST['senha']) < 6) {
                         throw new Exception("A senha deve ter pelo menos 6 caracteres");
@@ -75,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $userData['senha'] = $_POST['senha'];
                 }
                 
+                // Atualiza o usuário usando o modelo
                 $result = $userModel->update($id, $userData);
                 if ($result['success']) {
                     $message = $result['message'];
@@ -84,12 +114,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'delete':
-                // Deletar usuário
+                // Deleta um usuário
                 $id = (int)$_POST['id'];
                 if ($id === $_SESSION['user']['id']) {
                     throw new Exception("Não é possível deletar seu próprio usuário");
                 }
                 
+                // Deleta o usuário do banco de dados (exceto o próprio usuário logado)
                 $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = ? AND id != ?");
                 if ($stmt->execute([$id, $_SESSION['user']['id']])) {
                     $message = "Usuário deletado com sucesso!";
@@ -102,8 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Ação inválida");
         }
     } catch (Exception $e) {
+        // Trata erros de validação
         $error = $e->getMessage();
     } catch (PDOException $e) {
+        // Trata erros de banco de dados
         error_log("Erro no gerenciamento de usuários: " . $e->getMessage());
         $error = "Erro interno do servidor";
     }
@@ -114,6 +147,7 @@ $filtros = [];
 $where_conditions = [];
 $params = [];
 
+// Aplica filtros se fornecidos
 if (!empty($_GET['nome'])) {
     $where_conditions[] = "nome ILIKE ?";
     $params[] = '%' . $_GET['nome'] . '%';
@@ -138,6 +172,7 @@ if (isset($_GET['status']) && $_GET['status'] !== '') {
     $filtros['status'] = $_GET['status'];
 }
 
+// Monta a cláusula WHERE
 $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
 // Paginação
@@ -145,20 +180,20 @@ $itens_por_pagina = 20;
 $pagina_atual = max(1, (int)($_GET['pagina'] ?? 1));
 $offset = ($pagina_atual - 1) * $itens_por_pagina;
 
-// Count query
+// Query para contar o número total de usuários
 $count_query = "SELECT COUNT(*) FROM usuarios $where_clause";
 $stmt_count = $pdo->prepare($count_query);
 $stmt_count->execute($params);
 $total_usuarios = $stmt_count->fetchColumn();
 $total_paginas = ceil($total_usuarios / $itens_por_pagina);
 
-// Main query
+// Query principal para buscar os usuários
 $query = "SELECT * FROM usuarios $where_clause ORDER BY nome LIMIT $itens_por_pagina OFFSET $offset";
 $stmt = $pdo->prepare($query);
 $stmt->execute($params);
 $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Carregar tipos de usuário para filtros
+// Carrega os tipos de usuário para os filtros
 $tipos_usuario = $pdo->query("SELECT DISTINCT tipo FROM usuarios WHERE tipo IS NOT NULL ORDER BY tipo")->fetchAll(PDO::FETCH_COLUMN);
 ?>
 <!DOCTYPE html>
@@ -433,7 +468,7 @@ $tipos_usuario = $pdo->query("SELECT DISTINCT tipo FROM usuarios WHERE tipo IS N
     <!-- Overlay para mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-    <!-- Sidebar melhorado -->
+    <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h4>SICEF Admin</h4>

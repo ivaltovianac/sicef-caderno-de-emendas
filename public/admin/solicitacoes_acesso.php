@@ -1,83 +1,125 @@
-
 <?php
-// SICEF-caderno-de-emendas/public/admin/solicitacoes_acesso.php
+/**
+ * Gerenciamento de Solicitações de Acesso - SICEF
+ * 
+ * Este arquivo é responsável por gerenciar as solicitações de acesso ao sistema SICEF.
+ * Permite ao administrador aprovar ou rejeitar solicitações de novos usuários,
+ * criando usuários no sistema quando aprovados.
+ * 
+ * Funcionalidades:
+ * - Listagem de solicitações com filtros (status)
+ * - Aprovação de solicitações (cria usuário com senha temporária)
+ * - Rejeição de solicitações (com motivo)
+ * - Paginação dos resultados
+ * - Notificações para usuários
+ * 
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
+// Inicia a sessão para verificar se o usuário está logado e é administrador
 session_start();
+
+// Verifica se o usuário está logado e se é administrador
 if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    // Redireciona para a página de login caso não seja administrador
     header("Location: ../login.php");
     exit;
 }
 
+// Inclui os arquivos de configuração do banco de dados
 require_once __DIR__ . "/../../config/db.php";
 
-// Contadores para badges
+// Contadores para badges no menu
 $stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
 $solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
 
 $stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
 $qtde_sugestoes_pendentes = $stmt_sugestoes->fetchColumn();
 
+// Variáveis para mensagens de feedback
 $message = "";
 $error = "";
 
-// Processar ações
+// Processa ações do formulário (aprovar ou rejeitar solicitações)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        // Obtém a ação e o ID da solicitação
         $action = $_POST['action'] ?? '';
-        $solicitacao_id = (int)($_POST['solicitacao_id'] ?? 0);
+        $solicitacao_id = (int) ($_POST['solicitacao_id'] ?? 0);
 
+        // Valida os dados recebidos
         if (empty($action) || empty($solicitacao_id)) {
             throw new Exception('Dados inválidos');
         }
 
-        // Buscar solicitação
+        // Busca a solicitação no banco de dados
         $stmt = $pdo->prepare("SELECT * FROM solicitacoes_acesso WHERE id = ? AND status = 'pendente'");
         $stmt->execute([$solicitacao_id]);
         $solicitacao = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        // Verifica se a solicitação existe
         if (!$solicitacao) {
             throw new Exception('Solicitação não encontrada ou já processada');
         }
 
+        // Inicia uma transação para garantir consistência dos dados
         $pdo->beginTransaction();
 
         if ($action === 'aprovar') {
-            // Cria usuário
+            // Gera uma senha temporária para o novo usuário
             $senha_temporaria = bin2hex(random_bytes(4)); // Senha temporária de 8 caracteres
             $senha_hash = password_hash($senha_temporaria, PASSWORD_DEFAULT);
-            
+
+            // Insere o novo usuário no banco de dados
             $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha, tipo, is_admin, is_user, criado_em) VALUES (?, ?, ?, ?, false, true, NOW())");
             $stmt->execute([$solicitacao['nome'], $solicitacao['email'], $senha_hash, $solicitacao['tipo']]);
-            
+
+            // Atualiza o status da solicitação para aprovado
             $stmt = $pdo->prepare("UPDATE solicitacoes_acesso SET status = 'aprovado', data_resposta = NOW(), processado_por = ? WHERE id = ?");
             $stmt->execute([$_SESSION['user']['id'], $solicitacao_id]);
-            
+
+            // Obtém o ID do novo usuário criado
             $usuario_id = $pdo->lastInsertId();
+
+            // Cria uma notificação para o novo usuário com a senha temporária
             $stmt = $pdo->prepare("INSERT INTO notificacoes (usuario_id, tipo, mensagem, criado_em) VALUES (?, 'acesso_aprovado', ?, NOW())");
             $mensagem_notif = "Seu acesso foi aprovado! Senha temporária: $senha_temporaria";
             $stmt->execute([$usuario_id, $mensagem_notif]);
-            
+
+            // Define mensagem de sucesso
             $message = "Solicitação aprovada! Usuário criado com senha temporária: $senha_temporaria";
 
         } elseif ($action === 'rejeitar') {
+            // Obtém o motivo da rejeição
             $motivo = trim($_POST['motivo'] ?? '');
+
+            // Verifica se o motivo foi fornecido
             if (empty($motivo)) {
                 throw new Exception('Motivo da rejeição é obrigatório');
             }
-            
+
+            // Atualiza o status da solicitação para rejeitado
             $stmt = $pdo->prepare("UPDATE solicitacoes_acesso SET status = 'rejeitado', motivo_rejeicao = ?, data_resposta = NOW(), processado_por = ? WHERE id = ?");
             $stmt->execute([$motivo, $_SESSION['user']['id'], $solicitacao_id]);
-            
+
+            // Define mensagem de sucesso
             $message = "Solicitação rejeitada com sucesso!";
         } else {
+            // Lança exceção para ações inválidas
             throw new Exception('Ação inválida');
         }
 
+        // Confirma a transação
         $pdo->commit();
 
     } catch (Exception $e) {
+        // Reverte a transação em caso de erro
         $pdo->rollBack();
         $error = $e->getMessage();
     } catch (PDOException $e) {
+        // Reverte a transação e registra erro em caso de falha no banco de dados
         $pdo->rollBack();
         error_log("Erro ao processar solicitação: " . $e->getMessage());
         $error = "Erro interno do servidor";
@@ -89,26 +131,28 @@ $filtro_status = $_GET['status'] ?? '';
 $where_conditions = [];
 $params = [];
 
+// Aplica filtro por status se fornecido
 if (!empty($filtro_status)) {
     $where_conditions[] = "status = ?";
     $params[] = $filtro_status;
 }
 
+// Monta a cláusula WHERE
 $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
-// Paginação
+// Configuração da paginação
 $itens_por_pagina = 20;
-$pagina_atual = max(1, (int)($_GET['pagina'] ?? 1));
+$pagina_atual = max(1, (int) ($_GET['pagina'] ?? 1));
 $offset = ($pagina_atual - 1) * $itens_por_pagina;
 
-// Count query
+// Query para contar o número total de solicitações
 $count_query = "SELECT COUNT(*) FROM solicitacoes_acesso $where_clause";
 $stmt_count = $pdo->prepare($count_query);
 $stmt_count->execute($params);
 $total_solicitacoes = $stmt_count->fetchColumn();
 $total_paginas = ceil($total_solicitacoes / $itens_por_pagina);
 
-// Main query
+// Query principal para buscar as solicitações
 $query = "SELECT s.*, u.nome as processado_por_nome 
           FROM solicitacoes_acesso s 
           LEFT JOIN usuarios u ON s.processado_por = u.id 
@@ -123,6 +167,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -132,6 +177,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
+        /* Variáveis de cores e dimensões */
         :root {
             --primary-color: #00796B;
             --secondary-color: #009688;
@@ -141,19 +187,21 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             --sidebar-width: 280px;
         }
 
+        /* Reset básico */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
+        /* Estilo do corpo da página */
         body {
             font-family: 'Poppins', sans-serif;
             background-color: #f8f9fa;
             overflow-x: hidden;
         }
 
-        /* Sidebar responsivo */
+        /* Sidebar fixa e responsiva */
         .sidebar {
             position: fixed;
             top: 0;
@@ -167,10 +215,12 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             overflow-y: auto;
         }
 
+        /* Sidebar escondida (mobile) */
         .sidebar.collapsed {
             transform: translateX(-100%);
         }
 
+        /* Cabeçalho da sidebar */
         .sidebar-header {
             padding: 1.5rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -187,6 +237,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-size: 0.9rem;
         }
 
+        /* Menu da sidebar */
         .sidebar-menu {
             padding: 1rem 0;
         }
@@ -200,7 +251,8 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             transition: background-color 0.3s;
         }
 
-        .sidebar-menu a:hover, .sidebar-menu a.active {
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
             background-color: rgba(255, 255, 255, 0.1);
         }
 
@@ -213,17 +265,19 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin-left: auto;
         }
 
-        /* Main content responsivo */
+        /* Conteúdo principal com margem para sidebar */
         .main-content {
             margin-left: var(--sidebar-width);
             min-height: 100vh;
             transition: margin-left 0.3s ease;
         }
 
+        /* Conteúdo expandido (sidebar escondida) */
         .main-content.expanded {
             margin-left: 0;
         }
 
+        /* Barra superior */
         .top-bar {
             background: white;
             padding: 1rem 1.5rem;
@@ -234,6 +288,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             flex-wrap: wrap;
         }
 
+        /* Botão para toggle do menu (mobile) */
         .menu-toggle {
             display: none;
             background: none;
@@ -243,6 +298,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             cursor: pointer;
         }
 
+        /* Informações do usuário logado */
         .user-info {
             display: flex;
             align-items: center;
@@ -250,10 +306,12 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin-left: auto;
         }
 
+        /* Área de conteúdo */
         .content-area {
             padding: 2rem;
         }
 
+        /* Cards gerais */
         .card {
             border: none;
             border-radius: 10px;
@@ -261,6 +319,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             margin-bottom: 2rem;
         }
 
+        /* Cabeçalho dos cards */
         .card-header {
             background: var(--primary-color);
             color: white;
@@ -268,6 +327,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-weight: 600;
         }
 
+        /* Tabela */
         .table {
             margin-bottom: 0;
         }
@@ -278,6 +338,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             color: var(--dark-color);
         }
 
+        /* Botão primário */
         .btn-primary {
             background-color: var(--primary-color);
             border-color: var(--primary-color);
@@ -288,6 +349,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             border-color: var(--secondary-color);
         }
 
+        /* Paginação */
         .pagination .page-link {
             color: var(--primary-color);
         }
@@ -297,7 +359,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             border-color: var(--primary-color);
         }
 
-        /* Responsividade mobile */
+        /* Responsividade para telas pequenas */
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -351,6 +413,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             display: block;
         }
 
+        /* Badges de status */
         .status-badge {
             padding: 0.25rem 0.5rem;
             border-radius: 0.375rem;
@@ -373,6 +436,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             color: #721c24;
         }
 
+        /* Card de filtros */
         .filters-card {
             background: white;
             border-radius: 10px;
@@ -382,11 +446,12 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
     </style>
 </head>
+
 <body>
     <!-- Overlay para mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-    <!-- Sidebar -->
+    <!-- Sidebar com navegação -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h4>SICEF Admin</h4>
@@ -430,9 +495,9 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </nav>
     </div>
 
-    <!-- Main Content -->
+    <!-- Conteúdo principal -->
     <div class="main-content" id="mainContent">
-        <!-- Top Bar -->
+        <!-- Barra superior -->
         <div class="top-bar">
             <button class="menu-toggle" id="menuToggle">
                 <span class="material-icons">menu</span>
@@ -444,8 +509,9 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
 
-        <!-- Content Area -->
+        <!-- Área de conteúdo -->
         <div class="content-area">
+            <!-- Exibe mensagem de sucesso, se houver -->
             <?php if (!empty($message)): ?>
                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                     <span class="material-icons me-2">check_circle</span>
@@ -454,6 +520,7 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             <?php endif; ?>
 
+            <!-- Exibe mensagem de erro, se houver -->
             <?php if (!empty($error)): ?>
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     <span class="material-icons me-2">error</span>
@@ -470,9 +537,12 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <label class="form-label">Status</label>
                         <select name="status" class="form-control">
                             <option value="">Todos</option>
-                            <option value="pendente" <?= $filtro_status === 'pendente' ? 'selected' : '' ?>>Pendente</option>
-                            <option value="aprovado" <?= $filtro_status === 'aprovado' ? 'selected' : '' ?>>Aprovado</option>
-                            <option value="rejeitado" <?= $filtro_status === 'rejeitado' ? 'selected' : '' ?>>Rejeitado</option>
+                            <option value="pendente" <?= $filtro_status === 'pendente' ? 'selected' : '' ?>>Pendente
+                            </option>
+                            <option value="aprovado" <?= $filtro_status === 'aprovado' ? 'selected' : '' ?>>Aprovado
+                            </option>
+                            <option value="rejeitado" <?= $filtro_status === 'rejeitado' ? 'selected' : '' ?>>Rejeitado
+                            </option>
                         </select>
                     </div>
                     <button type="submit" class="btn btn-primary">
@@ -530,12 +600,12 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             <td>
                                                 <?php if ($solicitacao['status'] === 'pendente'): ?>
                                                     <div class="d-flex gap-1">
-                                                        <button type="button" class="btn btn-sm btn-success" 
-                                                                onclick="aprovarSolicitacao(<?= $solicitacao['id'] ?>, '<?= htmlspecialchars($solicitacao['nome']) ?>')">
+                                                        <button type="button" class="btn btn-sm btn-success"
+                                                            onclick="aprovarSolicitacao(<?= $solicitacao['id'] ?>, '<?= htmlspecialchars($solicitacao['nome']) ?>')">
                                                             <span class="material-icons">check</span>
                                                         </button>
-                                                        <button type="button" class="btn btn-sm btn-danger" 
-                                                                onclick="rejeitarSolicitacao(<?= $solicitacao['id'] ?>, '<?= htmlspecialchars($solicitacao['nome']) ?>')">
+                                                        <button type="button" class="btn btn-sm btn-danger"
+                                                            onclick="rejeitarSolicitacao(<?= $solicitacao['id'] ?>, '<?= htmlspecialchars($solicitacao['nome']) ?>')">
                                                             <span class="material-icons">close</span>
                                                         </button>
                                                     </div>
@@ -563,7 +633,8 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <ul class="pagination justify-content-center">
                         <?php if ($pagina_atual > 1): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $pagina_atual - 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
                                     Anterior
                                 </a>
                             </li>
@@ -571,7 +642,8 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <?php for ($i = max(1, $pagina_atual - 2); $i <= min($total_paginas, $pagina_atual + 2); $i++): ?>
                             <li class="page-item <?= $i === $pagina_atual ? 'active' : '' ?>">
-                                <a class="page-link" href="?pagina=<?= $i ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $i ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
                                     <?= $i ?>
                                 </a>
                             </li>
@@ -579,7 +651,8 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <?php if ($pagina_atual < $total_paginas): ?>
                             <li class="page-item">
-                                <a class="page-link" href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
+                                <a class="page-link"
+                                    href="?pagina=<?= $pagina_atual + 1 ?><?= !empty($filtro_status) ? '&status=' . $filtro_status : '' ?>">
                                     Próxima
                                 </a>
                             </li>
@@ -608,8 +681,8 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <p>Tem certeza que deseja rejeitar a solicitação de <strong id="rejeitar_nome"></strong>?</p>
                         <div class="mb-3">
                             <label for="motivo" class="form-label">Motivo da Rejeição *</label>
-                            <textarea class="form-control" id="motivo" name="motivo" rows="3" required 
-                                      placeholder="Digite o motivo da rejeição..."></textarea>
+                            <textarea class="form-control" id="motivo" name="motivo" rows="3" required
+                                placeholder="Digite o motivo da rejeição..."></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -632,26 +705,26 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Menu toggle responsivo
-        document.addEventListener('DOMContentLoaded', function() {
+        // Controle do menu lateral responsivo
+        document.addEventListener('DOMContentLoaded', function () {
             const menuToggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-            menuToggle.addEventListener('click', function() {
+            menuToggle.addEventListener('click', function () {
                 sidebar.classList.toggle('show');
                 sidebarOverlay.classList.toggle('show');
             });
 
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('show');
                 sidebarOverlay.classList.remove('show');
             });
 
-            // Fechar sidebar ao clicar em link (mobile)
+            // Fecha sidebar ao clicar em link no mobile
             const sidebarLinks = sidebar.querySelectorAll('a');
             sidebarLinks.forEach(link => {
-                link.addEventListener('click', function() {
+                link.addEventListener('click', function () {
                     if (window.innerWidth <= 768) {
                         sidebar.classList.remove('show');
                         sidebarOverlay.classList.remove('show');
@@ -675,9 +748,10 @@ $solicitacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
         // Limpa modal ao fechar
-        document.getElementById('rejeitarModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('rejeitarModal').addEventListener('hidden.bs.modal', function () {
             document.getElementById('motivo').value = '';
         });
     </script>
 </body>
+
 </html>

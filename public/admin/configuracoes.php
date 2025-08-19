@@ -1,24 +1,48 @@
 <?php
-// SICEF-caderno-de-emendas/public/admin/configuracoes.php
+/**
+ * Configurações do Sistema - SICEF
+ * 
+ * Este arquivo é responsável por gerenciar as configurações gerais do sistema SICEF.
+ * Permite ao administrador configurar e-mails, segurança, SMTP e outras opções do sistema.
+ * 
+ * Funcionalidades:
+ * - Configuração de e-mail para notificações
+ * - Configuração de servidor SMTP para envio de e-mails
+ * - Teste de envio de e-mail
+ * - Configuração de segurança (tentativas de login, bloqueio, timeout)
+ * - Configuração geral do sistema (nome, logs, backup, manutenção)
+ * - Exibição de informações do sistema
+ * 
+ * @package SICEF
+ * @author Equipe SICEF
+ * @version 1.0
+ */
+
+// Inicia a sessão para verificar se o usuário está logado e é administrador
 session_start();
+
+// Verifica se o usuário está logado e se é administrador
 if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
+    // Redireciona para a página de login caso não seja administrador
     header("Location: ../login.php");
     exit;
 }
 
+// Inclui o arquivo de configuração do banco de dados
 require_once __DIR__ . "/../../config/db.php";
 
-// Contadores para badges
+// Contadores para badges no menu
 $stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
 $solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
 
 $stmt_sugestoes = $pdo->query("SELECT COUNT(*) FROM sugestoes_emendas WHERE status = 'pendente'");
 $qtde_sugestoes_pendentes = $stmt_sugestoes->fetchColumn();
 
+// Variáveis para mensagens de feedback
 $message = "";
 $error = "";
 
-// Carregar configurações atuais
+// Carrega as configurações atuais do sistema
 try {
     $stmt_config = $pdo->query("SELECT chave, valor FROM configuracoes");
     $configs_raw = $stmt_config->fetchAll(PDO::FETCH_ASSOC);
@@ -27,11 +51,12 @@ try {
         $configs[$config['chave']] = $config['valor'];
     }
 } catch (PDOException $e) {
+    // Registra erro no log caso não consiga carregar as configurações
     error_log("Erro ao carregar configurações: " . $e->getMessage());
     $configs = [];
 }
 
-// Valores padrão
+// Define valores padrão para as configurações
 $configs = array_merge([
     'email_notificacoes' => '',
     'smtp_host' => '',
@@ -49,12 +74,12 @@ $configs = array_merge([
     'sistema_versao' => '1.0.0'
 ], $configs);
 
-// Processar formulários
+// Processa os formulários de configuração
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         switch ($_POST['action']) {
             case 'update_email':
-                // Configurações de email
+                // Atualiza configurações de e-mail para notificações
                 $email = trim($_POST['email_notificacoes'] ?? '');
                 if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     throw new Exception("E-mail inválido");
@@ -65,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'update_smtp':
-                // Configurações SMTP
+                // Atualiza configurações do servidor SMTP
                 $smtp_configs = [
                     'smtp_host' => trim($_POST['smtp_host'] ?? ''),
                     'smtp_port' => (int) ($_POST['smtp_port'] ?? 587),
@@ -82,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'update_security':
-                // Configurações de segurança
+                // Atualiza configurações de segurança
                 $security_configs = [
                     'max_tentativas_login' => max(1, (int) ($_POST['max_tentativas_login'] ?? 5)),
                     'tempo_bloqueio' => max(1, (int) ($_POST['tempo_bloqueio'] ?? 30)),
@@ -97,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'update_system':
-                // Configurações do sistema
+                // Atualiza configurações gerais do sistema
                 $system_configs = [
                     'backup_automatico' => isset($_POST['backup_automatico']) ? '1' : '0',
                     'log_nivel' => $_POST['log_nivel'] ?? 'info',
@@ -113,13 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'test_email':
-                // Teste de envio de email
+                // Testa o envio de e-mail (simulado)
                 $email_teste = trim($_POST['email_teste'] ?? '');
                 if (empty($email_teste) || !filter_var($email_teste, FILTER_VALIDATE_EMAIL)) {
                     throw new Exception("E-mail de teste inválido");
                 }
 
-                // Aqui você implementaria o envio real do email
+                // Aqui implementar o envio real do email
                 // Por enquanto, apenas simular sucesso
                 $message = "E-mail de teste enviado para: " . $email_teste;
                 break;
@@ -128,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Ação inválida");
         }
 
-        // Recarregar configurações
+        // Recarrega as configurações após atualização
         $stmt_config = $pdo->query("SELECT chave, valor FROM configuracoes");
         $configs_raw = $stmt_config->fetchAll(PDO::FETCH_ASSOC);
         $configs = [];
@@ -153,8 +178,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ], $configs);
 
     } catch (Exception $e) {
+        // Trata erros de validação
         $error = $e->getMessage();
     } catch (PDOException $e) {
+        // Trata erros de banco de dados
         error_log("Erro nas configurações: " . $e->getMessage());
         $error = "Erro interno do servidor";
     }
@@ -407,7 +434,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Overlay para mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-    <!-- Sidebar melhorado -->
+    <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h4>SICEF Admin</h4>
