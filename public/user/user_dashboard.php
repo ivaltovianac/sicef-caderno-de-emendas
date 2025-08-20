@@ -222,12 +222,29 @@ try {
         }
 
         .stat-card {
-            background: white;
+            background: linear-gradient(350deg, rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 58%, rgba(237, 221, 83, 1) 100%);
             border-radius: 10px;
             padding: 1.5rem;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card h3 {
+            font-size: 1.2rem;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card p {
+            color: #f0f0f0;
+            font-size: 0.95rem;
         }
 
         .stat-icon {
@@ -242,22 +259,22 @@ try {
 
         .stat-icon.primary {
             background: rgba(0, 121, 107, 0.1);
-            color: var(--primary-color);
+            color: var(--accent-color);
         }
 
         .stat-icon.success {
-            background: rgba(40, 167, 69, 0.1);
-            color: #28a745;
+            background: #1987543d;
+            color: var(--accent-color);
         }
 
         .stat-icon.warning {
-            background: rgba(255, 193, 7, 0.1);
-            color: #ffc107;
+            background: #1987543d;
+            color: #967515ff;
         }
 
         .stat-icon.info {
-            background: rgba(23, 162, 184, 0.1);
-            color: #17a2b8;
+            background: #1987543d;
+            color: var(--accent-color);
         }
 
         .card {
@@ -443,7 +460,7 @@ try {
     <!-- Sidebar melhorado -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <h4>SICEF</h4>
+            <h4><img src="imagens/logo.svg" alt="Logo SICEF">SICEF</h4>
             <p><?= htmlspecialchars($_SESSION['user']['nome']) ?></p>
         </div>
         <nav class="sidebar-menu">

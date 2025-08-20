@@ -31,6 +31,14 @@ if (!isset($_SESSION["user"]) || !$_SESSION["user"]["is_admin"]) {
 // Inclui o arquivo de configuração do banco de dados
 require_once __DIR__ . "/../../config/db.php";
 
+// Inclui o PHPMailer
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use PHPMailer\PHPMailer\Exception;
+
+// Carrega o autoload do Composer para PHPMailer
+require_once __DIR__ . '/../../vendor/autoload.php';
+
 // Contadores para badges no menu
 $stmt_solicitacoes = $pdo->query("SELECT COUNT(*) as total FROM solicitacoes_acesso WHERE status = 'pendente'");
 $solicitacoes_pendentes = $stmt_solicitacoes->fetch()['total'];
@@ -73,6 +81,54 @@ $configs = array_merge([
     'sistema_nome' => 'SICEF',
     'sistema_versao' => '1.0.0'
 ], $configs);
+
+/**
+ * Função para enviar e-mail usando PHPMailer
+ * 
+ * @param string $to_email Endereço de e-mail do destinatário
+ * @param string $to_name Nome do destinatário
+ * @param string $subject Assunto do e-mail
+ * @param string $body Corpo do e-mail
+ * @param array $configs Configurações do sistema
+ * @return bool Resultado do envio
+ */
+function enviarEmail($to_email, $to_name, $subject, $body, $configs)
+{
+    $mail = new PHPMailer(true);
+
+    try {
+        // Configurações do servidor SMTP
+        $mail->isSMTP();
+        $mail->Host = $configs['smtp_host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $configs['smtp_user'];
+        $mail->Password = $configs['smtp_pass'];
+        $mail->SMTPSecure = $configs['smtp_secure'];
+        $mail->Port = $configs['smtp_port'];
+
+        // Configurações de charset
+        $mail->CharSet = 'UTF-8';
+
+        // Remetente
+        $mail->setFrom($configs['smtp_user'], $configs['sistema_nome']);
+
+        // Destinatário
+        $mail->addAddress($to_email, $to_name);
+
+        // Conteúdo
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body = $body;
+        $mail->AltBody = strip_tags($body);
+
+        // Envia o e-mail
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("Erro ao enviar e-mail: " . $e->getMessage());
+        return false;
+    }
+}
 
 // Processa os formulários de configuração
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -138,15 +194,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'test_email':
-                // Testa o envio de e-mail (simulado)
+                // Testa o envio de e-mail usando PHPMailer
                 $email_teste = trim($_POST['email_teste'] ?? '');
                 if (empty($email_teste) || !filter_var($email_teste, FILTER_VALIDATE_EMAIL)) {
                     throw new Exception("E-mail de teste inválido");
                 }
 
-                // Aqui implementar o envio real do email
-                // Por enquanto, apenas simular sucesso
-                $message = "E-mail de teste enviado para: " . $email_teste;
+                // Recarrega as configurações para garantir que temos os valores mais recentes
+                $stmt_config = $pdo->query("SELECT chave, valor FROM configuracoes");
+                $configs_raw = $stmt_config->fetchAll(PDO::FETCH_ASSOC);
+                $configs_atualizadas = [];
+                foreach ($configs_raw as $config) {
+                    $configs_atualizadas[$config['chave']] = $config['valor'];
+                }
+                $configs_atualizadas = array_merge($configs, $configs_atualizadas);
+
+                // Verifica se as configurações SMTP estão preenchidas
+                if (
+                    empty($configs_atualizadas['smtp_host']) ||
+                    empty($configs_atualizadas['smtp_user']) ||
+                    empty($configs_atualizadas['smtp_pass'])
+                ) {
+                    throw new Exception("Configure o servidor SMTP antes de testar o envio de e-mails");
+                }
+
+                // Conteúdo do e-mail de teste
+                $assunto = "Teste de Configuração de E-mail - " . $configs_atualizadas['sistema_nome'];
+                $corpo = "
+                    <h2>Teste de Configuração de E-mail</h2>
+                    <p>Esta é uma mensagem de teste para verificar se as configurações de e-mail estão funcionando corretamente.</p>
+                    <p><strong>Configurações utilizadas:</strong></p>
+                    <ul>
+                        <li>Servidor SMTP: " . htmlspecialchars($configs_atualizadas['smtp_host']) . "</li>
+                        <li>Porta: " . htmlspecialchars($configs_atualizadas['smtp_port']) . "</li>
+                        <li>Segurança: " . htmlspecialchars($configs_atualizadas['smtp_secure']) . "</li>
+                        <li>Usuário: " . htmlspecialchars($configs_atualizadas['smtp_user']) . "</li>
+                    </ul>
+                    <p>Se você recebeu este e-mail, as configurações estão corretas!</p>
+                    <hr>
+                    <p><em>" . htmlspecialchars($configs_atualizadas['sistema_nome']) . " - Sistema de Controle de Emendas Parlamentares</em></p>
+                ";
+
+                // Envia o e-mail
+                if (enviarEmail($email_teste, "Administrador", $assunto, $corpo, $configs_atualizadas)) {
+                    $message = "E-mail de teste enviado com sucesso para: " . $email_teste;
+                } else {
+                    throw new Exception("Falha ao enviar e-mail de teste. Verifique as configurações SMTP.");
+                }
                 break;
 
             default:
@@ -551,11 +645,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <label for="smtp_host" class="form-label">Servidor SMTP</label>
                                 <input type="text" class="form-control" id="smtp_host" name="smtp_host"
                                     value="<?= htmlspecialchars($configs['smtp_host']) ?>" placeholder="smtp.gmail.com">
+                                <small class="text-muted">Para Gmail, use: smtp.gmail.com</small>
                             </div>
                             <div class="col-md-3">
                                 <label for="smtp_port" class="form-label">Porta</label>
                                 <input type="number" class="form-control" id="smtp_port" name="smtp_port"
                                     value="<?= htmlspecialchars($configs['smtp_port']) ?>" placeholder="587">
+                                <small class="text-muted">Gmail: 587 (TLS) ou 465 (SSL)</small>
                             </div>
                             <div class="col-md-3">
                                 <label for="smtp_secure" class="form-label">Segurança</label>
@@ -575,11 +671,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <input type="text" class="form-control" id="smtp_user" name="smtp_user"
                                     value="<?= htmlspecialchars($configs['smtp_user']) ?>"
                                     placeholder="usuario@gmail.com">
+                                <small class="text-muted">Seu e-mail do Gmail</small>
                             </div>
                             <div class="col-md-6">
                                 <label for="smtp_pass" class="form-label">Senha SMTP</label>
                                 <input type="password" class="form-control" id="smtp_pass" name="smtp_pass"
                                     value="<?= htmlspecialchars($configs['smtp_pass']) ?>" placeholder="Digite a senha">
+                                <small class="text-muted">Use uma senha de app para Gmail</small>
                             </div>
                         </div>
                         <div class="mt-3">

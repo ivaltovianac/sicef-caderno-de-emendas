@@ -337,19 +337,16 @@ try {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Selecionar Emendas - SICEF</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <style>
         :root {
-            --primary-color: #007b5e;
-            --secondary-color: #4db6ac;
-            --accent-color: #ffc107;
-            --dark-color: #2c3e50;
-            --light-color: #f8f9fa;
-            --border-color: #e0e0e0;
-            --error-color: #e74c3c;
-            --success-color: #2ecc71;
+            --primary-color: #00796B;
+            --secondary-color: #009688;
+            --accent-color: #FFC107;
+            --light-color: #ECEFF1;
+            --dark-color: #263238;
             --sidebar-width: 280px;
         }
 
@@ -361,13 +358,11 @@ try {
 
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
+            background-color: #f8f9fa;
             overflow-x: hidden;
         }
 
-        /* Sidebar */
+        /* Sidebar responsivo */
         .sidebar {
             position: fixed;
             top: 0;
@@ -428,7 +423,7 @@ try {
             margin-left: auto;
         }
 
-        /* Main content */
+        /* Main content responsivo */
         .main-content {
             margin-left: var(--sidebar-width);
             min-height: 100vh;
@@ -469,7 +464,7 @@ try {
             background: white;
             border-radius: 10px;
             padding: 1.5rem;
-            margin-bottom: 1rem;
+            margin-bottom: 2rem;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -489,7 +484,7 @@ try {
             width: 100%;
             padding: 0.4rem 0.5rem;
             border-radius: 5px;
-            border: 1px solid var(--border-color);
+            border: 1px solid #ced4da;
             font-size: 0.9rem;
         }
 
@@ -510,6 +505,16 @@ try {
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
+        .table {
+            margin-bottom: 0;
+        }
+
+        .table th {
+            border-top: none;
+            font-weight: 600;
+            color: var(--dark-color);
+        }
+
         .emendas-table {
             width: 100%;
             border-collapse: collapse;
@@ -518,7 +523,7 @@ try {
         .emendas-table th,
         .emendas-table td {
             padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid #dee2e6;
             text-align: left;
             vertical-align: middle;
             white-space: nowrap;
@@ -553,7 +558,7 @@ try {
             }
 
             .emendas-table tr {
-                border: 1px solid var(--border-color);
+                border: 1px solid #dee2e6;
                 margin-bottom: 10px;
                 padding: 10px;
                 border-radius: 8px;
@@ -613,7 +618,7 @@ try {
         }
 
         .btn-primary:hover {
-            background-color: #006a50;
+            background-color: var(--secondary-color);
             transform: translateY(-2px);
         }
 
@@ -623,12 +628,12 @@ try {
         }
 
         .btn-outline-secondary:hover {
-            background-color: #006a50;
+            background-color: var(--secondary-color);
             transform: translateY(-2px);
         }
 
         .btn-danger {
-            background-color: var(--error-color);
+            background-color: #e74c3c;
             color: white;
         }
 
@@ -897,10 +902,11 @@ try {
             </div>
         </form>
 
+        <!--Tabela  -->
         <div class="table-responsive">
             <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                <table class="emendas-table">
+                <table class="table emendas-table">
                     <thead>
                         <tr>
                             <th>Ações</th>
@@ -916,7 +922,6 @@ try {
                             <th>Categoria Econômica</th>
                             <th>Valor Pretendido (R$)</th>
                             <th>Valor Disponível (R$)</th>
-
                         </tr>
                     </thead>
                     <tbody>
@@ -969,6 +974,7 @@ try {
                                         <?= htmlspecialchars(substr($emenda['ods'], 0, 100)) ?>
                                         <?= strlen($emenda['ods']) > 100 ? '...' : '' ?>
                                     </div>
+                                </td>
                                 <td data-label="Regionalização">
                                     <div class="text-truncate" style="max-width: 100px;"
                                         title="<?= htmlspecialchars($emenda['regionalizacao']) ?>">
@@ -989,13 +995,13 @@ try {
                                         <?= htmlspecialchars(substr($emenda['programa'], 0, 100)) ?>
                                         <?= strlen($emenda['programa']) > 100 ? '...' : '' ?>
                                     </div>
+                                </td>
                                 <td data-label="Ação">
                                     <div class="text-truncate" style="max-width: 100px;"
                                         title="<?= htmlspecialchars($emenda['acao']) ?>">
                                         <?= htmlspecialchars(substr($emenda['acao'], 0, 100)) ?>
                                         <?= strlen($emenda['acao']) > 100 ? '...' : '' ?>
                                     </div>
-
                                 </td>
                                 <td data-label="Categoria Econômica">
                                     <div class="text-truncate" style="max-width: 100px;"
@@ -1003,13 +1009,11 @@ try {
                                         <?= htmlspecialchars(substr($emenda['categoria_economica'], 0, 100)) ?>
                                         <?= strlen($emenda['categoria_economica']) > 100 ? '...' : '' ?>
                                     </div>
-
                                 </td>
                                 <td data-label="Valor Pretendido (R$)"><?= formatarValor($emenda['valor_pretendido']) ?>
                                 </td>
                                 <td data-label="Valor Disponível (R$)"><?= formatarValor($emenda['valor_disponivel']) ?>
                                 </td>
-
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

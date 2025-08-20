@@ -569,6 +569,37 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             padding: 2rem;
         }
 
+        .material-icons {
+            font-family: 'Material Icons';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            vertical-align: middle;
+            font-size: 1rem;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .btn-light {
+            color: #000;
+        }
+
+        .btn .btn-light,
+        .btn-sm:hover {
+            background: #c3d762;
+            /* background-color: var(--secondary-color); */
+            /* border-color: var(--secondary-color); */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.5s ease;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -577,12 +608,35 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         }
 
         .stat-card {
-            background: white;
+            background: linear-gradient(350deg, rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 58%, rgba(237, 221, 83, 1) 100%);
             border-radius: 10px;
             padding: 1.5rem;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card h3 {
+            font-size: 1.2rem;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card p {
+            color: #f0f0f0;
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 748px) {
+            .stat-card {
+                padding: 1rem;
+            }
         }
 
         .stat-icon {
@@ -597,22 +651,22 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
 
         .stat-icon.primary {
             background: rgba(0, 121, 107, 0.1);
-            color: var(--primary-color);
+            color: var(--accent-color);
         }
 
         .stat-icon.success {
-            background: rgba(40, 167, 69, 0.1);
-            color: #28a745;
+            background: #1987543d;
+            color: var(--accent-color);
         }
 
         .stat-icon.warning {
-            background: rgba(255, 193, 7, 0.1);
+            background: #1987543d;
             color: #ffc107;
         }
 
         .stat-icon.info {
-            background: rgba(23, 162, 184, 0.1);
-            color: #17a2b8;
+            background: #1987543d;
+            color: var(--accent-color);
         }
 
         .card {
